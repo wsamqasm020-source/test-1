@@ -1,0 +1,41 @@
+المرحلة السابعة: معالجة الأخطاء — نتائج الاختبار
+=======================================================
+
+التاريخ: تم التنفيذ في هذه الجلسة
+
+أولاً — error handlers في app.py:
+✅ تمت الإضافة قبل if __name__ == '__main__':
+   - @app.errorhandler(404): يرجع JSON لمسارات /api/ وbase.html لغيرها
+   - @app.errorhandler(500): يسجل الخطأ في app.logger ويرجع JSON أو base.html
+   - @app.errorhandler(413): يرجع JSON "الملف كبير جداً (الحد الأقصى 8MB)"
+
+ثانياً — CORS headers في after_request:
+✅ تم دمجها مع store_client_mutation_result() الموجودة (لا after_request منفصل)
+   - يسمح فقط من: 192.168.x.x, 10.x.x.x, 172.x.x.x, localhost، والطلبات بدون Origin
+   - يضيف: Access-Control-Allow-Origin, Methods, Headers, Credentials
+
+ثالثاً — فحص url_for في القوالب:
+✅ base.html: جميع url_for تشير لـ endpoints موجودة (index, generate_page,
+   scanner_page, face_attendance_page, face_attendance_offline_page,
+   face_management_page, students_page, subjects_page, attendance_page,
+   grades_page, settings_page, teacher_logout)
+✅ student_scan.html: لا url_for — يستخدم مسارات مباشرة (/student/dashboard)
+✅ face_dashboard.html: url_for لـ (face_management_page, face_attendance_page,
+   settings_page) — جميعها موجودة
+
+رابعاً — فحص student_scan.html والكاميرا:
+✅ الكود يستخدم Html5Qrcode وgetUserMedia عبر scanner.start()
+✅ لا يوجد hardcoded IP أو localhost
+✅ إصلاح: عند !window.isSecureContext (HTTP من شبكة محلية)، يستدعي startScan()
+   مباشرةً document.getElementById('qrImageInput').click() بدلاً من إظهار رسالة خطأ
+   — هذا يفتح كاميرا الهاتف مباشرة بدون getUserMedia
+
+خامساً — اختبار الصياغة:
+✅ py_compile app.py → Exit: 0 (Python 3.11.9)
+✅ py_compile database.py → Exit: 0 (Python 3.11.9)
+✅ اختبار استيراد Python → نجح بلا أخطاء
+
+ملاحظة: venv يشير إلى Python 3.14 في C:\Program Files\Python314\ لكن
+المجلد لا يحتوي على python.exe. تم استخدام Python 3.11 من
+C:\Program Files\Python311\ للتحقق — وهو الـ runtime الفعلي المستخدم
+لتشغيل المشروع.

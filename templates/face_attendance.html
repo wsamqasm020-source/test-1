@@ -1,0 +1,1091 @@
+{% extends 'base.html' %}
+
+{% block title %}الحضور بالوجه - Face Recognition{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- الإعدادات الجانبية -->
+        <div class="col-lg-3 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header text-white" style="background: #5e3a8c;">
+                    <h5 class="mb-0">
+                        <i class="fas fa-cog me-2"></i>إعدادات الجلسة
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- فلتر المرحلة -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">المرحلة</label>
+                        <select id="gradeFilter" class="form-select" onchange="filterSubjectsByGrade()">
+                            <option value="">كل المراحل</option>
+                        </select>
+                    </div>
+
+                    <!-- اختيار المادة -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">المادة</label>
+                        <select id="subjectSelect" class="form-select">
+                            <option value="">اختر المادة...</option>
+                        </select>
+                    </div>
+
+                    <!-- عتبة التعرف -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            دقة التعرف
+                            <span class="badge bg-info" id="thresholdValue">60%</span>
+                        </label>
+                        <input type="range" class="form-range" id="thresholdSlider" 
+                               min="50" max="90" value="60" step="5">
+                        <small class="text-muted d-block">
+                            أعلى = أدق (قد يفشل أحياناً) | أقل = أسرع (قد يخطئ أحياناً)
+                        </small>
+                    </div>
+
+                    <!-- وضع الجلسة -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">وضع الجلسة</label>
+                        <select id="sessionModeSelect" class="form-select">
+                            <option value="classroom">Classroom Mode (تلقائي)</option>
+                            <option value="manual">Manual Mode (يدوي)</option>
+                        </select>
+                        <small class="text-muted d-block mt-1">
+                            التلقائي: يسجل الحضور مباشرة عند التعرف<br>
+                            اليدوي: يطلب تأكيد المدرس
+                        </small>
+                    </div>
+
+                    <!-- زر البدء -->
+                    <div class="d-grid gap-2">
+                        <button id="startSessionBtn" class="btn btn-success btn-lg" onclick="startFaceSession()">
+                            <i class="fas fa-play me-2"></i>بدء جلسة الحضور
+                        </button>
+                        <button id="stopSessionBtn" class="btn btn-danger d-none" onclick="stopFaceSession()">
+                            <i class="fas fa-stop me-2"></i>إيقاف الجلسة
+                        </button>
+                    </div>
+
+                    <!-- إحصائيات الجلسة -->
+                    <div class="mt-3 pt-3 border-top">
+                        <h6 class="fw-bold text-muted mb-2">
+                            <i class="fas fa-chart-line me-1"></i>إحصائيات الجلسة
+                        </h6>
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="small">محاولات ناجحة:</span>
+                            <strong class="text-success" id="stat_success">0</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="small">محاولات فاشلة:</span>
+                            <strong class="text-danger" id="stat_failed">0</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="small">وجوه غير معروفة:</span>
+                            <strong class="text-warning" id="stat_unknown">0</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span class="small">تكرارات:</span>
+                            <strong class="text-muted" id="stat_duplicate">0</strong>
+                        </div>
+                    </div>
+
+                    <!-- حالة الجلسة -->
+                    <div id="sessionStatus" class="alert alert-secondary mt-3 d-none">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            <span>جاري التحميل...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- منطقة الكاميرا والتعرف -->
+        <div class="col-lg-9">
+            <div class="card shadow">
+                <div class="card-header text-white" style="background: #5e3a8c;">
+                    <h4 class="mb-0">
+                        <i class="fas fa-camera me-2"></i>Face Recognition Attendance
+                    </h4>
+                </div>
+                <div class="card-body p-4">
+                    
+                    <!-- حالة: في انتظار بدء الجلسة -->
+                    <div id="waitingState" class="text-center py-5">
+                        <i class="fas fa-user-check fa-5x text-muted mb-4"></i>
+                        <h3 class="text-muted">اختر المادة وابدأ الجلسة</h3>
+                        <p class="text-muted">سيتم فتح الكاميرا تلقائياً عند بدء جلسة الحضور</p>
+                        <!-- زر طلب إذن الكاميرا للموبايل -->
+                        <div id="cameraPermissionDiv" class="mt-3 d-none">
+                            <button class="btn btn-warning btn-lg" onclick="requestCameraPermission()">
+                                <i class="fas fa-camera me-2"></i>اطلب إذن الكاميرا أولاً
+                            </button>
+                            <p class="text-muted small mt-2">إذا لم تفتح الكاميرا، اضغط هذا الزر أولاً</p>
+                        </div>
+                    </div>
+
+                    <!-- حالة: الجلسة نشطة -->
+                    <div id="activeState" class="d-none">
+                        <!-- الكاميرا -->
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="position-relative" style="background: #000; border-radius: 12px; overflow: hidden;">
+                                    <video id="cameraVideo" autoplay playsinline style="width: 100%; height: auto; display: block;"></video>
+                                    <canvas id="overlayCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+                                    
+                                    <!-- مؤشر التعرف -->
+                                    <div id="recognitionIndicator" class="position-absolute top-0 start-50 translate-middle-x mt-2 d-none" role="status" aria-live="polite">
+                                        <span class="badge bg-dark bg-opacity-75 px-3 py-2">
+                                            <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+                                            جاري التحقق...
+                                        </span>
+                                    </div>
+
+                                    <!-- رسالة التوجيه -->
+                                    <div id="guidanceMessage" class="position-absolute bottom-0 start-0 end-0 p-3 text-center" style="background: rgba(0,0,0,0.7);">
+                                        <p class="text-white mb-0 fw-bold">
+                                            <i class="fas fa-arrow-right me-2"></i>
+                                            ضع وجهك داخل الإطار
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- نتيجة التعرف -->
+                            <div class="col-md-4">
+                                <div id="recognitionResult" class="card h-100 border-0" style="background: #f8f9fa;">
+                                    <div class="card-body d-flex flex-column justify-content-center align-items-center text-center">
+                                        <i class="fas fa-user-circle fa-4x text-muted mb-3"></i>
+                                        <h5 class="text-muted">في انتظار التعرف...</h5>
+                                        <p class="text-muted small">سيظهر هنا اسم الطالب بعد التعرف عليه</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- سجل الحضور المباشر -->
+                        <div class="mt-4">
+                            <h5 class="mb-3">
+                                <i class="fas fa-list me-2"></i>سجل الحضور المباشر
+                            </h5>
+                            <div id="attendanceLog" class="list-group" style="max-height: 300px; overflow-y: auto;">
+                                <!-- سيتم ملؤها ديناميكياً -->
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: تأكيد الحضور (في الوضع اليدوي) -->
+<div class="modal fade" id="confirmAttendanceModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">تأكيد الحضور</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center py-4">
+                <img id="confirmStudentImage" src="" class="rounded-circle mb-3" style="width: 100px; height: 100px; object-fit: cover;" alt="">
+                <h4 id="confirmStudentName"></h4>
+                <p class="text-muted" id="confirmStudentCode"></p>
+                <div class="alert alert-info">
+                    <i class="fas fa-check-circle me-2"></i>
+                    درجة الثقة: <strong id="confirmConfidence"></strong>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">رفض</button>
+                <button type="button" class="btn btn-success" onclick="confirmAttendance()">
+                    <i class="fas fa-check me-2"></i>تأكيد الحضور
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentSession = null;
+let videoStream = null;
+let recognitionInterval = null;
+let sessionStats = {
+    success: 0,
+    failed: 0,
+    unknown: 0,
+    duplicate: 0
+};
+let pendingConfirmation = null;
+let isProcessing = false;
+let cooldownActive = false;
+
+// تحميل المواد عند بدء الصفحة
+let allSubjects = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadSubjects();
+
+    // إظهار زر طلب الإذن على الموبايل تلقائياً
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+        document.getElementById('cameraPermissionDiv').classList.remove('d-none');
+    }
+
+    // Threshold slider
+    document.getElementById('thresholdSlider').addEventListener('input', function() {
+        document.getElementById('thresholdValue').textContent = this.value + '%';
+    });
+});
+
+// طلب إذن الكاميرا بشكل صريح
+async function requestCameraPermission() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        // أوقف الستريم فوراً — فقط للحصول على الإذن
+        stream.getTracks().forEach(t => t.stop());
+        showToast('تم منح إذن الكاميرا ✓ يمكنك الآن بدء الجلسة', 'success');
+        document.getElementById('cameraPermissionDiv').classList.add('d-none');
+    } catch (error) {
+        let msg = 'لم يتم منح إذن الكاميرا';
+        if (error.name === 'NotAllowedError') {
+            msg = 'رُفض إذن الكاميرا — اذهب لإعدادات المتصفح وافتح الإذن يدوياً';
+        } else if (error.name === 'NotFoundError') {
+            msg = 'لم يتم العثور على كاميرا في هذا الجهاز';
+        } else if (!window.isSecureContext) {
+            msg = 'الكاميرا تتطلب HTTPS — تأكد أن الموقع يعمل على https://';
+        }
+        showToast(msg, 'error');
+    }
+}
+
+async function loadSubjects() {
+    try {
+        const response = await fetch('/api/get-subjects');
+        const data = await response.json();
+        
+        if (data.success) {
+            allSubjects = data.subjects;
+            
+            // بناء قائمة المراحل
+            const grades = [...new Set(data.subjects.map(s => s.grade).filter(Boolean))];
+            const gradeOrder = ['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة'];
+            grades.sort((a, b) => {
+                const ai = gradeOrder.indexOf(a), bi = gradeOrder.indexOf(b);
+                return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+            });
+            const gradeSelect = document.getElementById('gradeFilter');
+            gradeSelect.innerHTML = '<option value="">كل المراحل</option>';
+            grades.forEach(g => {
+                const opt = document.createElement('option');
+                opt.value = g;
+                opt.textContent = 'المرحلة ' + g;
+                gradeSelect.appendChild(opt);
+            });
+
+            // عرض كل المواد
+            renderSubjects(allSubjects);
+        }
+    } catch (error) {
+        console.error('Error loading subjects:', error);
+        showToast('فشل تحميل المواد', 'error');
+    }
+}
+
+function renderSubjects(subjects) {
+    const select = document.getElementById('subjectSelect');
+    const currentVal = select.value;
+    select.innerHTML = '<option value="">اختر المادة...</option>';
+    subjects.forEach(subject => {
+        const option = document.createElement('option');
+        option.value = subject.id;
+        option.textContent = `${subject.name} - ${subject.teacher_name} (${subject.grade})`;
+        select.appendChild(option);
+    });
+    // حافظ على الاختيار السابق إن كان موجوداً
+    if (currentVal && subjects.some(s => String(s.id) === currentVal)) {
+        select.value = currentVal;
+    }
+}
+
+function filterSubjectsByGrade() {
+    const grade = document.getElementById('gradeFilter').value;
+    const filtered = grade
+        ? allSubjects.filter(s => s.grade === grade)
+        : allSubjects;
+    renderSubjects(filtered);
+}
+
+// ── Offline Face Session Support ──────────────────────────────────────────────
+// يُخزَّن في IndexedDB تحت مفتاح 'offlineFaceSessions'
+const OfflineFaceDB = {
+    _db: null,
+    async _open() {
+        if (this._db) return this._db;
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open('FaceAttendanceOfflineDB', 1);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('sessions')) {
+                    db.createObjectStore('sessions', { keyPath: 'local_id' });
+                }
+                if (!db.objectStoreNames.contains('attendance')) {
+                    const s = db.createObjectStore('attendance', { keyPath: 'local_id', autoIncrement: true });
+                    s.createIndex('session_local_id', 'session_local_id', { unique: false });
+                    s.createIndex('synced', 'synced', { unique: false });
+                }
+            };
+            req.onsuccess = () => { this._db = req.result; resolve(this._db); };
+            req.onerror = () => reject(req.error);
+        });
+    },
+    async saveSession(session) {
+        const db = await this._open();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('sessions', 'readwrite');
+            tx.objectStore('sessions').put(session);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    },
+    async deleteSession(localId) {
+        const db = await this._open();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('sessions', 'readwrite');
+            tx.objectStore('sessions').delete(localId);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    },
+    async saveAttendance(record) {
+        const db = await this._open();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('attendance', 'readwrite');
+            const req = tx.objectStore('attendance').add({ ...record, synced: false });
+            req.onsuccess = () => resolve(req.result);
+            tx.onerror = () => reject(tx.error);
+        });
+    },
+    async getPendingAttendance() {
+        const db = await this._open();
+        return new Promise((resolve, reject) => {
+            const req = db.transaction('attendance', 'readonly')
+                         .objectStore('attendance').getAll();
+            req.onsuccess = () => resolve(req.result.filter(r => !r.synced));
+            req.onerror = () => reject(req.error);
+        });
+    },
+    async markAttendanceSynced(localId) {
+        const db = await this._open();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('attendance', 'readwrite');
+            const store = tx.objectStore('attendance');
+            const req = store.get(localId);
+            req.onsuccess = () => {
+                if (req.result) store.put({ ...req.result, synced: true });
+            };
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+};
+
+// مزامنة سجلات الحضور الوجه المحلية مع السيرفر
+async function syncOfflineFaceAttendance() {
+    try {
+        const pending = await OfflineFaceDB.getPendingAttendance();
+        if (pending.length === 0) return;
+
+        console.log(`[FaceSync] مزامنة ${pending.length} سجل حضور وجه...`);
+        let synced = 0;
+        for (const record of pending) {
+            try {
+                const response = await fetch('/api/face/attendance/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(record)
+                });
+                const data = await response.json();
+                if (data.success || data.already_registered) {
+                    await OfflineFaceDB.markAttendanceSynced(record.local_id);
+                    synced++;
+                }
+            } catch (e) {
+                console.warn('[FaceSync] فشل مزامنة سجل — السيرفر غير متاح:', e.message);
+                break;
+            }
+        }
+        if (synced > 0) {
+            showToast(`تمت مزامنة ${synced} سجل حضور (وجه)`, 'success');
+        }
+    } catch (e) {
+        console.error('[FaceSync] خطأ في المزامنة:', e);
+    }
+}
+
+// الاستماع لعودة الاتصال لمزامنة سجلات الوجه
+window.addEventListener('online', syncOfflineFaceAttendance);
+// محاولة مزامنة كل دقيقة حتى بدون حدث online (للـ localhost)
+setInterval(syncOfflineFaceAttendance, 60000);
+// ──────────────────────────────────────────────────────────────────────────────
+
+async function startFaceSession() {
+    const subjectId = document.getElementById('subjectSelect').value;
+    if (!subjectId) {
+        showToast('يرجى اختيار المادة أولاً', 'warning');
+        return;
+    }
+
+    // تحقق من HTTPS قبل البدء — استثناء localhost
+    const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+    if (!window.isSecureContext && !isLocalhost) {
+        showToast('الكاميرا تتطلب HTTPS — الموقع يعمل على HTTP', 'error');
+        return;
+    }
+
+    // تحقق من دعم المتصفح للكاميرا
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast('متصفحك لا يدعم الكاميرا — جرب Chrome أو Safari', 'error');
+        return;
+    }
+
+    const threshold = document.getElementById('thresholdSlider').value / 100;
+    const sessionMode = document.getElementById('sessionModeSelect').value;
+    let createdSessionId = null;
+    let isOfflineSession = false;
+
+    try {
+        // محاولة إنشاء الجلسة على السيرفر (يشتغل حتى بدون نت إذا السيرفر محلي)
+        let sessionData = null;
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 8000);
+            const response = await fetch('/api/face/session/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: controller.signal,
+                body: JSON.stringify({
+                    subject_id: parseInt(subjectId),
+                    threshold: threshold,
+                    session_name: `جلسة ${new Date().toLocaleString('ar-EG')}`
+                })
+            });
+            clearTimeout(timeout);
+            sessionData = await response.json();
+            if (!sessionData.success) throw new Error(sessionData.message);
+        } catch (fetchError) {
+            // السيرفر غير متاح تماماً (مو مجرد انقطاع نت) — نبدأ جلسة محلية
+            console.warn('[FaceSession] السيرفر غير متاح، بدء جلسة أوف لاين:', fetchError.message);
+            isOfflineSession = true;
+            const localId = 'offline_' + Date.now();
+            const offlineSession = {
+                local_id: localId,
+                subject_id: parseInt(subjectId),
+                threshold,
+                session_name: `جلسة ${new Date().toLocaleString('ar-EG')}`,
+                started_at: new Date().toISOString(),
+                synced: false
+            };
+            await OfflineFaceDB.saveSession(offlineSession);
+            sessionData = { success: true, session_id: localId, offline: true };
+        }
+
+        createdSessionId = sessionData.session_id;
+        currentSession = {
+            id: sessionData.session_id,
+            subject_id: subjectId,
+            threshold: threshold,
+            mode: sessionMode,
+            offline: isOfflineSession
+        };
+
+        // فتح الكاميرا
+        await startCamera();
+
+        // تحديث الواجهة
+        document.getElementById('waitingState').classList.add('d-none');
+        document.getElementById('activeState').classList.remove('d-none');
+        document.getElementById('startSessionBtn').classList.add('d-none');
+        document.getElementById('stopSessionBtn').classList.remove('d-none');
+        document.getElementById('sessionStatus').classList.remove('d-none');
+        document.getElementById('sessionStatus').innerHTML = isOfflineSession
+            ? `<div class="d-flex align-items-center">
+                <i class="fas fa-wifi-slash text-warning me-2"></i>
+                <span class="text-warning fw-bold">جلسة أوف لاين — سيُزامَن الحضور عند الاتصال</span>
+               </div>`
+            : `<div class="d-flex align-items-center">
+                <div class="spinner-grow spinner-grow-sm text-success me-2"></div>
+                <span class="text-success">الجلسة نشطة</span>
+               </div>`;
+
+        // بدء التعرف التلقائي
+        startContinuousRecognition();
+
+        showToast(
+            isOfflineSession ? 'جلسة أوف لاين — الحضور يُحفظ محلياً' : 'تم بدء جلسة الحضور بنجاح',
+            isOfflineSession ? 'warning' : 'success'
+        );
+    } catch (error) {
+        if (videoStream) {
+            videoStream.getTracks().forEach(track => track.stop());
+            videoStream = null;
+        }
+        if (recognitionInterval) {
+            clearTimeout(recognitionInterval);
+            recognitionInterval = null;
+        }
+        currentSession = null;
+        document.getElementById('activeState').classList.add('d-none');
+        document.getElementById('waitingState').classList.remove('d-none');
+        document.getElementById('startSessionBtn').classList.remove('d-none');
+        document.getElementById('stopSessionBtn').classList.add('d-none');
+        document.getElementById('sessionStatus').classList.add('d-none');
+        if (createdSessionId && !isOfflineSession) {
+            try {
+                await fetch(`/api/face/session/close/${createdSessionId}`, { method: 'POST' });
+            } catch (closeError) {
+                console.error('Failed to close unstarted face session:', closeError);
+            }
+        }
+        console.error('Error starting session:', error);
+        showToast(error.message || 'فشل بدء الجلسة', 'error');
+    }
+}
+
+async function startCamera() {
+    try {
+        // قائمة محاولات بترتيب الأولوية
+        const attempts = [
+            { video: { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 } } },
+            { video: { facingMode: 'user' } },
+            { video: { facingMode: { ideal: 'environment' } } },
+            { video: { width: { ideal: 640 }, height: { ideal: 480 } } },
+            { video: true }
+        ];
+
+        let lastError = null;
+        for (const constraints of attempts) {
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+                break; // نجحنا
+            } catch (e) {
+                lastError = e;
+                console.warn('[Camera] attempt failed:', JSON.stringify(constraints), e.message);
+            }
+        }
+
+        if (!videoStream) throw lastError || new Error('لم يتم العثور على كاميرا');
+
+        const video = document.getElementById('cameraVideo');
+        video.srcObject = videoStream;
+
+        await new Promise((resolve, reject) => {
+            video.onloadedmetadata = resolve;
+            video.onerror = reject;
+            setTimeout(resolve, 3000);
+        });
+
+        try { await video.play(); } catch(e) { /* ignore interrupted play */ }
+
+        drawFaceGuide();
+
+    } catch (error) {
+        console.error('Camera error:', error);
+        let msg = 'فشل فتح الكاميرا';
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            msg = 'يرجى السماح باستخدام الكاميرا من إعدادات المتصفح';
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+            msg = 'لم يتم العثور على كاميرا في هذا الجهاز';
+        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+            msg = 'الكاميرا مشغولة من تطبيق آخر — أغلقه وحاول مجدداً';
+        } else if (error.name === 'OverconstrainedError') {
+            msg = 'إعدادات الكاميرا غير مدعومة على هذا الجهاز';
+        } else if (error.name === 'AbortError' || /timeout/i.test(error.message)) {
+            msg = 'الكاميرا مشغولة — أغلق أي تطبيق يستخدمها وحاول مجدداً';
+        } else if (!window.isSecureContext) {
+            msg = 'الكاميرا تتطلب HTTPS — تأكد أن الموقع يعمل على https://';
+        }
+        showToast(msg, 'error');
+        throw error;
+    }
+}
+
+// لون المربع — يُحدَّث من نتيجة السيرفر
+let boxColor = '#00ff00';
+
+function drawFaceGuide() {
+    const video = document.getElementById('cameraVideo');
+    const canvas = document.getElementById('overlayCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function draw() {
+        if (!videoStream) return;
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        const faceWidth = canvas.width * 0.4;
+        const faceHeight = canvas.height * 0.5;
+        const x = (canvas.width - faceWidth) / 2;
+        const y = (canvas.height - faceHeight) / 2;
+
+        // رسم إطار منقط
+        ctx.strokeStyle = boxColor;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 10]);
+        ctx.strokeRect(x, y, faceWidth, faceHeight);
+
+        // رسم الزوايا
+        ctx.setLineDash([]);
+        const cornerLength = 30;
+        ctx.strokeStyle = boxColor;
+
+        // Top-left
+        ctx.beginPath();
+        ctx.moveTo(x, y + cornerLength);
+        ctx.lineTo(x, y);
+        ctx.lineTo(x + cornerLength, y);
+        ctx.stroke();
+
+        // Top-right
+        ctx.beginPath();
+        ctx.moveTo(x + faceWidth - cornerLength, y);
+        ctx.lineTo(x + faceWidth, y);
+        ctx.lineTo(x + faceWidth, y + cornerLength);
+        ctx.stroke();
+
+        // Bottom-left
+        ctx.beginPath();
+        ctx.moveTo(x, y + faceHeight - cornerLength);
+        ctx.lineTo(x, y + faceHeight);
+        ctx.lineTo(x + cornerLength, y + faceHeight);
+        ctx.stroke();
+
+        // Bottom-right
+        ctx.beginPath();
+        ctx.moveTo(x + faceWidth - cornerLength, y + faceHeight);
+        ctx.lineTo(x + faceWidth, y + faceHeight);
+        ctx.lineTo(x + faceWidth, y + faceHeight - cornerLength);
+        ctx.stroke();
+
+        requestAnimationFrame(draw);
+    }
+
+    draw();
+}
+
+function startContinuousRecognition() {
+    scheduleNextRecognition(0);
+}
+
+function scheduleNextRecognition(delay = 2000) {
+    if (!currentSession || recognitionInterval) return;
+
+    recognitionInterval = setTimeout(async () => {
+        recognitionInterval = null;
+        if (!currentSession) return;
+
+        if (cooldownActive) {
+            scheduleNextRecognition(500);
+            return;
+        }
+
+        await captureAndRecognize();
+        scheduleNextRecognition(cooldownActive ? 500 : 2000);
+    }, delay);
+}
+
+async function captureAndRecognize() {
+    if (isProcessing || cooldownActive) return;
+
+    isProcessing = true;
+    const indicator = document.getElementById('recognitionIndicator');
+    let requestTimeout = null;
+
+    try {
+        const video = document.getElementById('cameraVideo');
+        if (!video.videoWidth || !video.videoHeight || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+            updateGuidanceMessage('جارٍ تجهيز الكاميرا، وجّه وجهك نحو الكاميرا');
+            return;
+        }
+
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+
+        // حدود المربع الأخضر — نفس drawFaceGuide تماماً
+        const boxW = vw * 0.40;
+        const boxH = vh * 0.50;
+        const boxX = (vw - boxW) / 2;
+        const boxY = (vh - boxH) / 2;
+
+        // ── نرسل للسيرفر صورتين: الكاملة (للتعرف) + منطقة المربع فقط (للتحقق) ──
+        const scale = Math.min(1, 480 / vw);
+        const fullCanvas = document.createElement('canvas');
+        fullCanvas.width  = Math.round(vw * scale);
+        fullCanvas.height = Math.round(vh * scale);
+        fullCanvas.getContext('2d').drawImage(video, 0, 0, fullCanvas.width, fullCanvas.height);
+        const fullImage = fullCanvas.toDataURL('image/jpeg', 0.70);
+
+        // صورة المربع فقط (للتحقق من وجود وجه داخله)
+        const cropCanvas = document.createElement('canvas');
+        cropCanvas.width  = Math.round(boxW * scale);
+        cropCanvas.height = Math.round(boxH * scale);
+        cropCanvas.getContext('2d').drawImage(
+            video,
+            boxX, boxY, boxW, boxH,
+            0, 0, cropCanvas.width, cropCanvas.height
+        );
+        const boxImage = cropCanvas.toDataURL('image/jpeg', 0.70);
+
+        indicator.classList.remove('d-none');
+        const controller = new AbortController();
+        requestTimeout = window.setTimeout(() => controller.abort(), 30000);
+
+        const response = await fetch('/api/face/recognize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+                image_data: fullImage,
+                box_image:  boxImage,
+                subject_id: currentSession.subject_id,
+                session_id: currentSession.offline ? null : currentSession.id
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            handleRecognitionSuccess(data);
+        } else {
+            handleRecognitionFailure(data);
+        }
+
+    } catch (error) {
+        console.error('Recognition error:', error);
+        if (error.name === 'AbortError') {
+            updateGuidanceMessage('استغرق التحقق وقتاً طويلاً. انظر مباشرة إلى الكاميرا وحاول مجدداً.');
+        } else if (!navigator.onLine || error.message?.includes('fetch') || error.message?.includes('NetworkError')) {
+            // في وضع الأوف لاين — الكاميرا تعمل لكن التعرف معطّل
+            if (currentSession && currentSession.offline) {
+                updateGuidanceMessage('⚠️ وضع أوف لاين — التعرف على الوجه يتطلب اتصالاً بالسيرفر');
+            } else {
+                updateGuidanceMessage('انقطع الاتصال — تحقق من الشبكة وحاول مجدداً');
+            }
+        } else {
+            updateGuidanceMessage('تعذر الاتصال بخدمة التعرف. تحقق من الاتصال وحاول مجدداً.');
+        }
+    } finally {
+        if (requestTimeout) window.clearTimeout(requestTimeout);
+        indicator.classList.add('d-none');
+        isProcessing = false;
+    }
+}
+
+/**
+ * checkFaceInBox — يُستخدم فقط لتلوين المربع (أخضر/أحمر) بصرياً
+ */
+async function checkFaceInBox(sourceCanvas, boxX, boxY, boxW, boxH) {
+    try {
+        if (window.FaceDetector) {
+            try {
+                const cropCanvas = document.createElement('canvas');
+                cropCanvas.width  = Math.round(boxW);
+                cropCanvas.height = Math.round(boxH);
+                cropCanvas.getContext('2d').drawImage(
+                    sourceCanvas, boxX, boxY, boxW, boxH,
+                    0, 0, cropCanvas.width, cropCanvas.height
+                );
+                const detector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+                const faces = await detector.detect(cropCanvas);
+                return faces.length > 0;
+            } catch (e) { /* غير مدعوم */ }
+        }
+        return true; // بدون FaceDetector نترك السيرفر يقرر
+    } catch (e) {
+        return true;
+    }
+}
+
+async function handleRecognitionSuccess(data) {
+    if (data.already_registered) {
+        sessionStats.duplicate++;
+        updateSessionStats();
+        showToast(`${data.student_name} مسجل حضور مسبقاً`, 'warning');
+        return;
+    }
+
+    sessionStats.success++;
+    updateSessionStats();
+
+    // حفظ محلي إذا كانت الجلسة أوف لاين
+    if (currentSession && currentSession.offline) {
+        try {
+            await OfflineFaceDB.saveAttendance({
+                session_local_id: currentSession.id,
+                student_id: data.student_id,
+                student_name: data.student_name,
+                student_code: data.student_code,
+                subject_id: currentSession.subject_id,
+                confidence: data.confidence,
+                recorded_at: new Date().toISOString()
+            });
+        } catch (e) {
+            console.error('[FaceSession] فشل حفظ الحضور محلياً:', e);
+        }
+    }
+
+    // عرض النتيجة
+    displayRecognitionResult(data, true);
+
+    // إضافة إلى السجل
+    addToAttendanceLog(data);
+
+    // صوت نجاح
+    playSuccessSound();
+
+    // Cooldown لمدة 2 ثانية
+    activateCooldown(2000);
+
+    showToast(`تم تسجيل حضور ${data.student_name}`, 'success');
+}
+
+function handleRecognitionFailure(data) {
+    const result = data.result || 'UNKNOWN';
+
+    if (result === 'NO_FACE') {
+        updateGuidanceMessage('لم يتم اكتشاف وجه. ضع وجهك داخل الإطار');
+    } else if (result === 'OUT_OF_BOX') {
+        updateGuidanceMessage('وجهك خارج الإطار الأخضر — قرّب وجهك وضعه داخل المربع');
+    } else if (result === 'MULTIPLE_FACES') {
+        sessionStats.failed++;
+        updateSessionStats();
+        updateGuidanceMessage('يوجد أكثر من وجه. يجب أن يكون هناك شخص واحد فقط');
+    } else if (result === 'POOR_QUALITY') {
+        updateGuidanceMessage(data.message || 'جودة الصورة منخفضة');
+    } else if (result === 'LOW_CONFIDENCE') {
+        sessionStats.unknown++;
+        updateSessionStats();
+        displayRecognitionResult(data, false);
+        updateGuidanceMessage('انظر مباشرة إلى الكاميرا واجعل وجهك مقابلاً لها، ثم حاول مجدداً');
+    } else {
+        sessionStats.unknown++;
+        updateSessionStats();
+        updateGuidanceMessage(data.message || 'لم يتم التعرف على الوجه');
+    }
+}
+
+function displayRecognitionResult(data, success) {
+    const resultDiv = document.getElementById('recognitionResult');
+    
+    if (success) {
+        resultDiv.innerHTML = `
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-check-circle fa-4x text-success"></i>
+                </div>
+                <h4 class="text-success">${data.student_name}</h4>
+                <p class="text-muted mb-2">${data.student_code}</p>
+                <p class="text-muted mb-2">${data.grade || ''}</p>
+                <div class="badge bg-success fs-6 px-3 py-2">
+                    <i class="fas fa-star me-1"></i>
+                    ${Math.round(data.confidence * 100)}% تطابق
+                </div>
+                <p class="text-success mt-3 fw-bold">
+                    <i class="fas fa-check me-2"></i>تم تسجيل الحضور
+                </p>
+            </div>
+        `;
+    } else {
+        resultDiv.innerHTML = `
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-times-circle fa-4x text-danger"></i>
+                </div>
+                <h5 class="text-danger">فشل التعرف</h5>
+                <p class="text-muted">${data.message}</p>
+                ${data.confidence ? `
+                <div class="badge bg-warning text-dark fs-6 px-3 py-2">
+                    ${Math.round(data.confidence * 100)}% تطابق
+                </div>
+                ` : ''}
+            </div>
+        `;
+    }
+}
+
+function addToAttendanceLog(data) {
+    const log = document.getElementById('attendanceLog');
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    
+    const entry = document.createElement('div');
+    entry.className = 'list-group-item list-group-item-action animate-fade-in';
+    entry.innerHTML = `
+        <div class="d-flex w-100 justify-content-between align-items-center">
+            <div>
+                <h6 class="mb-1">${data.student_name}</h6>
+                <small class="text-muted">${data.student_code}</small>
+            </div>
+            <div class="text-end">
+                <span class="badge bg-success">${timeString}</span>
+                <small class="d-block text-muted">${Math.round(data.confidence * 100)}%</small>
+            </div>
+        </div>
+    `;
+    
+    log.insertBefore(entry, log.firstChild);
+}
+
+function updateGuidanceMessage(message) {
+    document.getElementById('guidanceMessage').innerHTML = `
+        <p class="text-white mb-0 fw-bold">
+            <i class="fas fa-info-circle me-2"></i>${message}
+        </p>
+    `;
+}
+
+function updateSessionStats() {
+    document.getElementById('stat_success').textContent = sessionStats.success;
+    document.getElementById('stat_failed').textContent = sessionStats.failed;
+    document.getElementById('stat_unknown').textContent = sessionStats.unknown;
+    document.getElementById('stat_duplicate').textContent = sessionStats.duplicate;
+}
+
+function activateCooldown(duration) {
+    cooldownActive = true;
+    updateGuidanceMessage('في انتظار الطالب التالي...');
+    
+    setTimeout(() => {
+        cooldownActive = false;
+        updateGuidanceMessage('ضع وجهك داخل الإطار');
+    }, duration);
+}
+
+function playSuccessSound() {
+    // إضافة صوت نجاح (اختياري)
+    try {
+        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGG0fPTgjMGHm7A7+OZSA0PVanm8LZiFgc5iM/z0H0vBSh+zPLaizsJEmS57OihURIJQ5zf8sF2KwU0iNHyz4Exp');
+        audio.volume = 0.3;
+        audio.play();
+    } catch (e) {}
+}
+
+async function stopFaceSession() {
+    if (!currentSession) return;
+
+    const sessionId = currentSession.id;
+    const wasOffline = currentSession.offline;
+
+    if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+        videoStream = null;
+    }
+    if (recognitionInterval) {
+        clearTimeout(recognitionInterval);
+        recognitionInterval = null;
+    }
+    currentSession = null;
+    isProcessing = false;
+    cooldownActive = false;
+
+    document.getElementById('activeState').classList.add('d-none');
+    document.getElementById('waitingState').classList.remove('d-none');
+    document.getElementById('stopSessionBtn').classList.add('d-none');
+    document.getElementById('startSessionBtn').classList.remove('d-none');
+    document.getElementById('sessionStatus').classList.add('d-none');
+
+    try {
+        if (wasOffline) {
+            // جلسة أوف لاين — نحذفها من IndexedDB ونحاول المزامنة
+            await OfflineFaceDB.deleteSession(sessionId);
+            sessionStats = { success: 0, failed: 0, unknown: 0, duplicate: 0 };
+            updateSessionStats();
+            showToast('تم إيقاف الجلسة — سيُزامَن الحضور عند الاتصال', 'info');
+            syncOfflineFaceAttendance();
+        } else {
+            const response = await fetch(`/api/face/session/close/${sessionId}`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'تعذر إغلاق جلسة الحضور على الخادم');
+            }
+            sessionStats = { success: 0, failed: 0, unknown: 0, duplicate: 0 };
+            updateSessionStats();
+            showToast('تم إيقاف الجلسة', 'info');
+        }
+    } catch (error) {
+        console.error('Error stopping session:', error);
+        showToast(error.message || 'فشل إيقاف الجلسة على الخادم', 'error');
+    }
+}
+
+function showToast(message, type = 'success') {
+    if (!window.Swal) {
+        alert(message);
+        return;
+    }
+    const colors = { success: '#28a745', error: '#dc3545', warning: '#ffc107', info: '#17a2b8' };
+    Swal.fire({
+        title: { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' }[type],
+        text: message,
+        icon: type,
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true
+    });
+}
+
+// تنظيف عند مغادرة الصفحة
+window.addEventListener('beforeunload', function() {
+    if (currentSession) {
+        if (videoStream) {
+            videoStream.getTracks().forEach(track => track.stop());
+            videoStream = null;
+        }
+        if (recognitionInterval) {
+            clearTimeout(recognitionInterval);
+        }
+        if (!currentSession.offline) {
+            fetch(`/api/face/session/close/${currentSession.id}`, {
+                method: 'POST',
+                keepalive: true
+            }).catch(error => console.error('Failed to close face session on page exit:', error));
+        }
+    }
+});
+
+// مزامنة تلقائية عند تحميل الصفحة إذا كان هناك سجلات معلّقة
+document.addEventListener('DOMContentLoaded', function() {
+    if (navigator.onLine) {
+        syncOfflineFaceAttendance();
+    }
+});
+</script>
+
+<style>
+.animate-fade-in {
+    animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+#cameraVideo {
+    border-radius: 12px;
+}
+
+.bg-gradient {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+</style>
+{% endblock %}

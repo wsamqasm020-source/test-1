@@ -1,0 +1,103 @@
+# سجل تغييرات المرحلة الثالثة: تحويل الموارد الخارجية إلى محلية
+# تاريخ التنفيذ: المرحلة الثالثة من خطة LAN
+
+## الملفات المُنشأة
+
+### static/fonts/cairo-300.ttf (89,832 bytes)
+- مصدر: https://fonts.gstatic.com/s/cairo/v31/SLXgc1nY6HkvangtZmpQdkhzfH5lkSs2SgRjCAGMQ1z0hL4-W1Q.ttf
+- الوزن: 300 (Light)
+- الترخيص: SIL OFL 1.1
+
+### static/fonts/cairo-400.ttf (91,500 bytes)
+- مصدر: https://fonts.gstatic.com/s/cairo/v31/SLXgc1nY6HkvangtZmpQdkhzfH5lkSs2SgRjCAGMQ1z0hOA-W1Q.ttf
+- الوزن: 400 (Regular)
+- الترخيص: SIL OFL 1.1
+
+### static/fonts/cairo-500.ttf (91,676 bytes)
+- مصدر: https://fonts.gstatic.com/s/cairo/v31/SLXgc1nY6HkvangtZmpQdkhzfH5lkSs2SgRjCAGMQ1z0hNI-W1Q.ttf
+- الوزن: 500 (Medium)
+- الترخيص: SIL OFL 1.1
+
+### static/fonts/cairo-600.ttf (91,724 bytes)
+- مصدر: https://fonts.gstatic.com/s/cairo/v31/SLXgc1nY6HkvangtZmpQdkhzfH5lkSs2SgRjCAGMQ1z0hD45W1Q.ttf
+- الوزن: 600 (SemiBold)
+- الترخيص: SIL OFL 1.1
+
+### static/fonts/cairo-700.ttf (91,664 bytes)
+- مصدر: https://fonts.gstatic.com/s/cairo/v31/SLXgc1nY6HkvangtZmpQdkhzfH5lkSs2SgRjCAGMQ1z0hAc5W1Q.ttf
+- الوزن: 700 (Bold)
+- الترخيص: SIL OFL 1.1
+
+### static/fonts/cairo.css (952 bytes)
+- @font-face لجميع أوزان Cairo (300/400/500/600/700)
+- يشير إلى ملفات TTF المحلية في /static/fonts/
+- يستخدم font-display: swap
+
+### static/js/sweetalert2.all.min.js (79,150 bytes)
+- مصدر: https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js
+- الترخيص: MIT
+- الإصدار: sweetalert2@11
+
+### static/js/qrcode.min.js (19,927 bytes)
+- مصدر: https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js
+- الترخيص: MIT
+- الإصدار: qrcodejs@1.0.0
+
+---
+
+## الملفات المُعدَّلة
+
+### templates/base.html
+التغييرات:
+1. حُذفت روابط preconnect الخارجية (cdn.jsdelivr.net, cdnjs.cloudflare.com, fonts.googleapis.com, fonts.gstatic.com, unpkg.com)
+2. استُبدل: <link href="https://fonts.googleapis.com/css2?family=Cairo..."> media="print"
+   بـ: <link rel="stylesheet" href="/static/fonts/cairo.css">
+3. استُبدل: <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11">
+   بـ: <script src="/static/js/sweetalert2.all.min.js">
+
+### templates/student_scan.html
+التغييرات:
+1. استُبدل: <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+   بـ: <link rel="stylesheet" href="/static/css/font-awesome.min.css">
+2. استُبدل: <link href="https://fonts.googleapis.com/css2?family=Cairo...">
+   بـ: <link rel="stylesheet" href="/static/fonts/cairo.css">
+
+### templates/student_settings.html
+التغييرات:
+1. استُبدل: <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.rtl.min.css">
+   بـ: <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+2. استُبدل: <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+   بـ: <link rel="stylesheet" href="/static/css/font-awesome.min.css">
+3. استُبدل: <link href="https://fonts.googleapis.com/css2?family=Cairo...">
+   بـ: <link rel="stylesheet" href="/static/fonts/cairo.css">
+4. استُبدل: <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js">
+   بـ: <script src="/static/js/bootstrap.bundle.min.js">
+
+### templates/unified_login.html
+التغييرات:
+1. استُبدل: <link href="https://fonts.googleapis.com/css2?family=Cairo...">
+   بـ: <link rel="stylesheet" href="/static/fonts/cairo.css">
+2. استُبدل: <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+   بـ: <link rel="stylesheet" href="/static/css/font-awesome.min.css">
+
+### templates/network.html
+التغييرات:
+1. استُبدل: <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js">
+   بـ: <script src="/static/js/qrcode.min.js">
+
+---
+
+## الملفات غير المُعدَّلة (لا تحتوي CDN خارجية)
+- templates/face_dashboard.html  — يرث base.html، لا CDN إضافية
+- templates/face_attendance.html — يرث base.html، لا CDN إضافية
+- templates/face_management.html — يرث base.html، لا CDN إضافية
+- templates/attendance.html      — يرث base.html، لا CDN إضافية
+
+---
+
+## ملاحظات
+- static/css/font-awesome.min.css هو الإصدار 6.4.2 المحلي بالفعل (مع ملفات webfonts/)
+- static/css/bootstrap.min.css موجود محلياً
+- static/js/bootstrap.bundle.min.js موجود محلياً
+- static/js/html5-qrcode.min.js موجود محلياً
+- لا يوجد أي رابط CDN متبقٍّ في أي قالب HTML بعد هذه التغييرات

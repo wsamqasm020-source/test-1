@@ -1,0 +1,699 @@
+{% extends 'base.html' %}
+
+{% block title %}إدارة Face Recognition{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2>
+                <i class="fas fa-user-check me-2"></i>
+                إدارة التعرف على الوجه
+            </h2>
+            <p class="text-muted">تسجيل وإدارة بيانات الوجه للطلاب</p>
+        </div>
+    </div>
+
+    <!-- إحصائيات سريعة -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white shadow">
+                <div class="card-body">
+                    <h6 class="card-title">إجمالي الطلاب</h6>
+                    <h2 id="stat_total">-</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white shadow">
+                <div class="card-body">
+                    <h6 class="card-title">طلاب مسجلين</h6>
+                    <h2 id="stat_enrolled">-</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white shadow">
+                <div class="card-body">
+                    <h6 class="card-title">غير مسجلين</h6>
+                    <h2 id="stat_not_enrolled">-</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white shadow">
+                <div class="card-body">
+                    <h6 class="card-title">نسبة التغطية</h6>
+                    <h2 id="stat_coverage">-%</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- فلاتر البحث -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row g-2 align-items-center">
+                <div class="col-md-4">
+                    <input type="text" id="searchInput" class="form-control" placeholder="بحث بالاسم أو الرقم...">
+                </div>
+                <div class="col-md-2">
+                    <select id="filterStatus" class="form-select" onchange="applyFilters()">
+                        <option value="all">الكل</option>
+                        <option value="enrolled">مسجلين فقط</option>
+                        <option value="not_enrolled">غير مسجلين فقط</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select id="filterGrade" class="form-select" onchange="applyFilters()">
+                        <option value="all">كل المراحل</option>
+                        <option value="الثانية">الثانية</option>
+                        <option value="الثالثة">الثالثة</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-primary w-100" onclick="applyFilters()">
+                        <i class="fas fa-filter me-1"></i>تطبيق الفلاتر
+                    </button>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-secondary w-100" onclick="resetFilters()">
+                        <i class="fas fa-redo me-1"></i>إعادة تعيين
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- جدول الطلاب -->
+    <div class="card shadow">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">قائمة الطلاب</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>صورة الملف الشخصي</th>
+                            <th>صورة Face Recognition</th>
+                            <th>الاسم</th>
+                            <th>الرقم الجامعي</th>
+                            <th>المرحلة</th>
+                            <th>حالة التسجيل</th>
+                            <th>تاريخ التسجيل</th>
+                            <th>الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentsTableBody">
+                        <tr>
+                            <td colspan="8" class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status"></div>
+                                <p class="mt-2 text-muted">جاري تحميل البيانات...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: تسجيل الوجه -->
+<div class="modal fade" id="enrollFaceModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-camera me-2"></i>
+                    تسجيل وجه الطالب
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- معلومات الطالب -->
+                    <div class="col-md-12 mb-3">
+                        <div class="alert alert-info">
+                            <h5 id="enrollStudentName" class="mb-0"></h5>
+                            <small id="enrollStudentCode" class="text-muted"></small>
+                        </div>
+                    </div>
+
+                    <!-- طريقة الإدخال -->
+                    <div class="col-md-12 mb-3">
+                        <ul class="nav nav-tabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="camera-tab" data-bs-toggle="tab" data-bs-target="#camera-panel" type="button">
+                                    <i class="fas fa-camera me-2"></i>كاميرا
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-panel" type="button">
+                                    <i class="fas fa-upload me-2"></i>رفع صورة
+                                </button>
+                            </li>
+                        </ul>
+                        <div class="tab-content border p-3">
+                            <!-- Camera Tab -->
+                            <div class="tab-pane fade show active" id="camera-panel">
+                                <div class="text-center">
+                                    <video id="enrollVideo" autoplay playsinline style="width: 100%; max-width: 500px; border-radius: 8px; background: #000;"></video>
+                                    <canvas id="enrollCanvas" style="display: none;"></canvas>
+                                    <div class="mt-3">
+                                        <button class="btn btn-success" onclick="captureFromCamera()">
+                                            <i class="fas fa-camera me-2"></i>التقاط الصورة
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Upload Tab -->
+                            <div class="tab-pane fade" id="upload-panel">
+                                <div class="text-center">
+                                    <input type="file" id="uploadImageInput" accept="image/*" class="form-control mb-3" onchange="previewUploadedImage()">
+                                    <img id="uploadPreview" src="" style="max-width: 100%; max-height: 400px; display: none; border-radius: 8px;" alt="">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- معاينة الصورة المُلتقطة -->
+                    <div class="col-md-12 d-none" id="capturedImagePreview">
+                        <h6>الصورة المُلتقطة:</h6>
+                        <img id="capturedImage" src="" style="width: 100%; max-height: 400px; object-fit: contain; border-radius: 8px;" alt="">
+                    </div>
+
+                    <!-- رسالة النتيجة -->
+                    <div class="col-md-12 mt-3">
+                        <div id="enrollResult" class="alert d-none"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="btn btn-primary" id="submitEnrollBtn" onclick="submitEnrollment()" disabled>
+                    <i class="fas fa-check me-2"></i>تسجيل الوجه
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: اختبار التعرف -->
+<div class="modal fade" id="testFaceModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-vial me-2"></i>
+                    اختبار التعرف على الوجه
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <div class="alert alert-info">
+                            <h5 id="testStudentName" class="mb-0"></h5>
+                            <small id="testStudentCode" class="text-muted"></small>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <h6>التقط صورة جديدة:</h6>
+                        <video id="testVideo" autoplay playsinline style="width: 100%; border-radius: 8px; background: #000;"></video>
+                        <canvas id="testCanvas" style="display: none;"></canvas>
+                        <div class="mt-2 text-center">
+                            <button class="btn btn-primary" onclick="captureForTest()">
+                                <i class="fas fa-camera me-2"></i>التقاط
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <h6>نتيجة الاختبار:</h6>
+                        <div id="testResult" class="border rounded p-3" style="min-height: 200px;">
+                            <p class="text-muted text-center">التقط صورة لرؤية النتيجة</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إغلاق</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let allStudents = [];
+let filteredStudents = [];
+let currentEnrollStudent = null;
+let currentTestStudent = null;
+let enrollVideoStream = null;
+let testVideoStream = null;
+let capturedImageData = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadStudents();
+    loadStats();
+    
+    // إعداد Modal events
+    const enrollModal = document.getElementById('enrollFaceModal');
+    enrollModal.addEventListener('shown.bs.modal', function() {
+        startEnrollCamera();
+    });
+    enrollModal.addEventListener('hidden.bs.modal', function() {
+        stopEnrollCamera();
+        resetEnrollForm();
+    });
+
+    const testModal = document.getElementById('testFaceModal');
+    testModal.addEventListener('shown.bs.modal', function() {
+        startTestCamera();
+    });
+    testModal.addEventListener('hidden.bs.modal', function() {
+        stopTestCamera();
+    });
+
+    // البحث المباشر
+    document.getElementById('searchInput').addEventListener('input', applyFilters);
+});
+
+async function loadStudents() {
+    try {
+        const response = await fetch('/api/face/enrolled-students');
+        const data = await response.json();
+
+        if (data.success) {
+            allStudents = data.students;
+            filteredStudents = allStudents;
+            renderStudentsTable();
+        }
+    } catch (error) {
+        console.error('Error loading students:', error);
+        showToast('فشل تحميل قائمة الطلاب', 'error');
+    }
+}
+
+async function loadStats() {
+    try {
+        const response = await fetch('/api/face/stats');
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('stat_total').textContent = data.total_students;
+            document.getElementById('stat_enrolled').textContent = data.enrolled_students;
+            document.getElementById('stat_not_enrolled').textContent = data.not_enrolled_students;
+            
+            const coverage = data.total_students > 0 
+                ? Math.round((data.enrolled_students / data.total_students) * 100) 
+                : 0;
+            document.getElementById('stat_coverage').textContent = coverage + '%';
+        }
+    } catch (error) {
+        console.error('Error loading stats:', error);
+    }
+}
+
+function populateGradeFilter() {
+    // ترتيب المراحل بشكل منطقي
+    const gradeOrder = ['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة'];
+    const found = [...new Set(allStudents.map(s => s.teacher_name).filter(Boolean))];
+    const grades = gradeOrder.filter(g => found.includes(g))
+                   .concat(found.filter(g => !gradeOrder.includes(g)).sort());
+    const select = document.getElementById('filterGrade');
+    select.innerHTML = '<option value="all">كل المراحل</option>';
+    grades.forEach(grade => {
+        const option = document.createElement('option');
+        option.value = grade;
+        option.textContent = grade;
+        select.appendChild(option);
+    });
+}
+
+function applyFilters() {
+    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    const statusFilter = document.getElementById('filterStatus').value;
+    const gradeFilter = document.getElementById('filterGrade').value;
+
+    filteredStudents = allStudents.filter(student => {
+        // Search filter
+        const matchSearch = !searchTerm || 
+            student.full_name.toLowerCase().includes(searchTerm) ||
+            student.student_code.toLowerCase().includes(searchTerm);
+
+        // Status filter
+        const matchStatus = statusFilter === 'all' ||
+            (statusFilter === 'enrolled' && student.face_enrolled) ||
+            (statusFilter === 'not_enrolled' && !student.face_enrolled);
+
+        // Grade filter
+        const matchGrade = gradeFilter === 'all' || student.teacher_name === gradeFilter;
+
+        return matchSearch && matchStatus && matchGrade;
+    });
+
+    renderStudentsTable();
+}
+
+function resetFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('filterStatus').value = 'all';
+    document.getElementById('filterGrade').value = 'all';
+    filteredStudents = allStudents;
+    renderStudentsTable();
+}
+
+function renderStudentsTable() {
+    const tbody = document.getElementById('studentsTableBody');
+    
+    if (filteredStudents.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="text-center py-4 text-muted">
+                    لا توجد نتائج
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = filteredStudents.map(student => `
+        <tr>
+            <td>
+                <img src="${student.profile_image || '/static/icons/icon-192x192.png'}" 
+                     alt="${student.full_name}" 
+                     style="width: 50px; height: 50px; object-fit: cover; border-radius: 50%;">
+            </td>
+            <td>
+                ${student.face_image_path 
+                    ? `<img src="${student.face_image_path}" 
+                           alt="Face Recognition" 
+                           style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px; border: 2px solid #28a745;">`
+                    : '<span class="text-muted">-</span>'
+                }
+            </td>
+            <td>${student.full_name}</td>
+            <td>${student.student_code}</td>
+            <td>${student.teacher_name || '-'}</td>
+            <td>
+                ${student.face_enrolled 
+                    ? '<span class="badge bg-success"><i class="fas fa-check me-1"></i>مسجل</span>'
+                    : '<span class="badge bg-warning"><i class="fas fa-times me-1"></i>غير مسجل</span>'
+                }
+            </td>
+            <td>${student.face_enrolled_at ? new Date(student.face_enrolled_at).toLocaleDateString('ar-EG') : '-'}</td>
+            <td>
+                ${!student.face_enrolled 
+                    ? `<button class="btn btn-sm btn-primary" onclick="openEnrollModal(${student.id})">
+                        <i class="fas fa-camera me-1"></i>تسجيل
+                       </button>`
+                    : `<button class="btn btn-sm btn-success" onclick="openTestModal(${student.id})">
+                        <i class="fas fa-vial me-1"></i>اختبار
+                       </button>
+                       <button class="btn btn-sm btn-warning" onclick="openEnrollModal(${student.id})">
+                        <i class="fas fa-sync me-1"></i>تحديث
+                       </button>
+                       <button class="btn btn-sm btn-danger" onclick="deleteFaceData(${student.id})">
+                        <i class="fas fa-trash me-1"></i>حذف
+                       </button>`
+                }
+            </td>
+        </tr>
+    `).join('');
+}
+
+function openEnrollModal(studentId) {
+    const student = allStudents.find(s => s.id === studentId);
+    if (!student) return;
+
+    currentEnrollStudent = student;
+    document.getElementById('enrollStudentName').textContent = student.full_name;
+    document.getElementById('enrollStudentCode').textContent = student.student_code;
+
+    const modal = new bootstrap.Modal(document.getElementById('enrollFaceModal'));
+    modal.show();
+}
+
+async function startEnrollCamera() {
+    try {
+        enrollVideoStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+        });
+        document.getElementById('enrollVideo').srcObject = enrollVideoStream;
+    } catch (error) {
+        console.error('Camera error:', error);
+        showToast('فشل فتح الكاميرا', 'error');
+    }
+}
+
+function stopEnrollCamera() {
+    if (enrollVideoStream) {
+        enrollVideoStream.getTracks().forEach(track => track.stop());
+        enrollVideoStream = null;
+    }
+}
+
+function captureFromCamera() {
+    const video = document.getElementById('enrollVideo');
+    const canvas = document.getElementById('enrollCanvas');
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+
+    capturedImageData = canvas.toDataURL('image/jpeg', 0.95);
+    
+    // عرض الصورة
+    document.getElementById('capturedImage').src = capturedImageData;
+    document.getElementById('capturedImagePreview').classList.remove('d-none');
+    document.getElementById('submitEnrollBtn').disabled = false;
+}
+
+function previewUploadedImage() {
+    const input = document.getElementById('uploadImageInput');
+    const file = input.files[0];
+    
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            capturedImageData = e.target.result;
+            document.getElementById('uploadPreview').src = capturedImageData;
+            document.getElementById('uploadPreview').style.display = 'block';
+            document.getElementById('submitEnrollBtn').disabled = false;
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+async function submitEnrollment() {
+    if (!capturedImageData || !currentEnrollStudent) return;
+
+    const btn = document.getElementById('submitEnrollBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>جاري المعالجة...';
+
+    const resultDiv = document.getElementById('enrollResult');
+    resultDiv.classList.remove('d-none', 'alert-success', 'alert-danger');
+    resultDiv.classList.add('alert-info');
+    resultDiv.textContent = 'جاري معالجة الصورة...';
+
+    try {
+        const response = await fetch('/api/face/enroll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                student_id: currentEnrollStudent.id,
+                image_data: capturedImageData
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            resultDiv.classList.remove('alert-info');
+            resultDiv.classList.add('alert-success');
+            resultDiv.innerHTML = `<i class="fas fa-check-circle me-2"></i>${data.message}`;
+            
+            // تحديث القائمة
+            setTimeout(() => {
+                loadStudents();
+                loadStats();
+                bootstrap.Modal.getInstance(document.getElementById('enrollFaceModal')).hide();
+            }, 2000);
+        } else {
+            resultDiv.classList.remove('alert-info');
+            resultDiv.classList.add('alert-danger');
+            resultDiv.innerHTML = `<i class="fas fa-exclamation-circle me-2"></i>${data.message}`;
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check me-2"></i>تسجيل الوجه';
+        }
+    } catch (error) {
+        console.error('Enrollment error:', error);
+        resultDiv.classList.remove('alert-info');
+        resultDiv.classList.add('alert-danger');
+        resultDiv.textContent = 'حدث خطأ أثناء التسجيل';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-check me-2"></i>تسجيل الوجه';
+    }
+}
+
+function resetEnrollForm() {
+    document.getElementById('enrollResult').classList.add('d-none');
+    document.getElementById('capturedImagePreview').classList.add('d-none');
+    document.getElementById('uploadPreview').style.display = 'none';
+    document.getElementById('uploadImageInput').value = '';
+    document.getElementById('submitEnrollBtn').disabled = true;
+    document.getElementById('submitEnrollBtn').innerHTML = '<i class="fas fa-check me-2"></i>تسجيل الوجه';
+    capturedImageData = null;
+}
+
+async function deleteFaceData(studentId) {
+    const student = allStudents.find(s => s.id === studentId);
+    if (!student) return;
+
+    const confirmed = await Swal.fire({
+        title: 'تأكيد الحذف',
+        text: `هل أنت متأكد من حذف بيانات وجه ${student.full_name}؟`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'نعم، احذف',
+        cancelButtonText: 'إلغاء'
+    });
+
+    if (confirmed.isConfirmed) {
+        try {
+            const response = await fetch(`/api/face/delete/${studentId}`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                showToast(data.message, 'success');
+                loadStudents();
+                loadStats();
+            } else {
+                showToast(data.message, 'error');
+            }
+        } catch (error) {
+            console.error('Delete error:', error);
+            showToast('فشل حذف البيانات', 'error');
+        }
+    }
+}
+
+function openTestModal(studentId) {
+    const student = allStudents.find(s => s.id === studentId);
+    if (!student) return;
+
+    currentTestStudent = student;
+    document.getElementById('testStudentName').textContent = student.full_name;
+    document.getElementById('testStudentCode').textContent = student.student_code;
+
+    const modal = new bootstrap.Modal(document.getElementById('testFaceModal'));
+    modal.show();
+}
+
+async function startTestCamera() {
+    try {
+        testVideoStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+        });
+        document.getElementById('testVideo').srcObject = testVideoStream;
+    } catch (error) {
+        console.error('Camera error:', error);
+        showToast('فشل فتح الكاميرا', 'error');
+    }
+}
+
+function stopTestCamera() {
+    if (testVideoStream) {
+        testVideoStream.getTracks().forEach(track => track.stop());
+        testVideoStream = null;
+    }
+}
+
+async function captureForTest() {
+    const video = document.getElementById('testVideo');
+    const canvas = document.getElementById('testCanvas');
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+
+    const imageData = canvas.toDataURL('image/jpeg', 0.95);
+
+    const resultDiv = document.getElementById('testResult');
+    resultDiv.innerHTML = '<div class="text-center"><div class="spinner-border"></div><p class="mt-2">جاري الاختبار...</p></div>';
+
+    try {
+        const response = await fetch(`/api/face/test/${currentTestStudent.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_data: imageData })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            resultDiv.innerHTML = `
+                <div class="text-center">
+                    <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                    <h5 class="text-success">تم التعرف بنجاح!</h5>
+                    <div class="badge bg-success fs-5 px-3 py-2 mt-2">
+                        ${Math.round(data.confidence * 100)}% تطابق
+                    </div>
+                    <p class="text-muted mt-3">${data.message}</p>
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `
+                <div class="text-center">
+                    <i class="fas fa-times-circle fa-3x text-danger mb-3"></i>
+                    <h5 class="text-danger">فشل التعرف</h5>
+                    ${data.confidence ? `
+                        <div class="badge bg-warning text-dark fs-6 px-3 py-2 mt-2">
+                            ${Math.round(data.confidence * 100)}% تطابق
+                        </div>
+                    ` : ''}
+                    <p class="text-muted mt-3">${data.message}</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Test error:', error);
+        resultDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                حدث خطأ أثناء الاختبار
+            </div>
+        `;
+    }
+}
+
+function showToast(message, type = 'success') {
+    if (window.Swal) {
+        Swal.fire({
+            title: { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' }[type],
+            text: message,
+            icon: type,
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000
+        });
+    } else {
+        alert(message);
+    }
+}
+</script>
+{% endblock %}

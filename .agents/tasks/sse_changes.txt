@@ -1,0 +1,48 @@
+SSE Implementation — Phase 6 (Real-time Attendance Sync)
+=========================================================
+
+Date: 2025
+
+Files Modified
+--------------
+1. app.py
+   - Added `Response, stream_with_context` to Flask imports (line 9)
+   - Added `import json` and `import queue as _queue_module` after functools import
+   - Added SSE infrastructure before `if __name__ == '__main__':`:
+     * `_sse_clients` list and `_sse_lock` threading.Lock for managing connected teachers
+     * `_notify_attendance_update(subject_id, data)` — broadcasts a JSON event to all
+       connected SSE clients watching the given subject_id (or all clients if no filter)
+     * `/api/attendance-stream` GET endpoint — SSE stream for teachers, requires login,
+       accepts optional `?subject_id=` query param; sends heartbeat every 25s to keep alive
+     * `/api/latest-attendance` GET endpoint — REST fallback polling endpoint
+   - In `student_api_scan_attendance()` (POST /student/api/scan-attendance):
+     * Added `_notify_attendance_update()` call after successful `record_attendance()`
+     * Wrapped in try/except so SSE failure never blocks the attendance record
+   - In `api_scan_qr()` (POST /api/scan-qr), student QR branch:
+     * Added `_notify_attendance_update()` call after successful `record_attendance()`
+     * Same try/except guard
+
+2. templates/attendance.html
+   - Added SSE client JavaScript block inside `{% block extra_js %}` before `loadSubjectStats()`
+   - IIFE that:
+     * Opens EventSource to `/api/attendance-stream?subject_id=<current>`
+     * On `new_attendance` event: calls `loadAttendance()`, `loadTodayStats()`, `loadSubjectStats()`
+       — but only if the broadcast subject_id matches the currently-selected subject
+     * On error: closes and reconnects with exponential backoff (3s → 30s max)
+     * Falls back to 15s polling if EventSource is not supported
+     * Reconnects automatically when teacher changes the subject filter dropdown
+     * Closes old connection before opening a new one (no duplicate connections)
+
+Behaviour
+---------
+- When a student scans a subject QR and attendance is recorded, the teacher's attendance
+  page updates automatically within ~1 second without any manual refresh.
+- If the SSE connection drops (network blip, server restart), the client reconnects
+  automatically with backoff.
+- Teachers not on the attendance page, or watching a different subject, are not affected.
+- SSE failure at broadcast time is silently swallowed — it never prevents attendance recording.
+
+Verification
+------------
+- `python _test_import.py` ran without errors: "[OK] app imported successfully"
+- No syntax errors in app.py; database initialized correctly on import.

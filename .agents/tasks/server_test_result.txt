@@ -1,0 +1,23 @@
+﻿HTTP Status: ERROR: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>
+STDOUT: 
+STDERR: Traceback (most recent call last):
+
+  File "c:\Projects\pwa\app.py", line 141, in initialize_app
+
+    print('[App] \u2705 Database initialized successfully')
+
+  File "C:\Program Files\Python311\Lib\encodings\cp1252.py", line 19, in encode
+
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 6: character maps to <undefined>
+
+
+
+During handling of the above exception, another exception occurred:
+
+
+
+Traceback (most recent call last):

@@ -1,0 +1,789 @@
+{% extends 'base.html' %}
+{% block title %}الحضور بالوجه (أوف لاين){% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+
+    <!-- الإعدادات -->
+    <div class="col-lg-3 mb-4">
+      <div class="card shadow-sm">
+        <div class="card-header text-white" style="background:#5e3a8c;">
+          <h5 class="mb-0"><i class="fas fa-cog me-2"></i>إعدادات الجلسة</h5>
+        </div>
+        <div class="card-body">
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">المرحلة</label>
+            <select id="gradeFilter" class="form-select" onchange="filterSubjects()">
+              <option value="">كل المراحل</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">المادة</label>
+            <select id="subjectSelect" class="form-select">
+              <option value="">اختر المادة...</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">
+              دقة التعرف
+              <span class="badge bg-info" id="thresholdValue">55%</span>
+            </label>
+            <input type="range" class="form-range" id="thresholdSlider" min="40" max="80" value="55" step="5">
+            <small class="text-muted">أقل = أسرع | أعلى = أدق</small>
+          </div>
+
+          <!-- حالة النماذج -->
+          <div id="modelStatus" class="alert alert-warning py-2 small">
+            <i class="fas fa-spinner fa-spin me-1"></i>جاري تحميل نماذج الذكاء الاصطناعي...
+          </div>
+
+          <!-- حالة بيانات الوجوه -->
+          <div id="faceDataStatus" class="alert alert-secondary py-2 small d-none">
+            <i class="fas fa-database me-1"></i><span id="faceDataText">...</span>
+          </div>
+
+          <div class="d-grid gap-2 mt-3">
+            <button id="startBtn" class="btn btn-success btn-lg" onclick="startSession()" disabled>
+              <i class="fas fa-play me-2"></i>بدء الجلسة
+            </button>
+            <button id="stopBtn" class="btn btn-danger d-none" onclick="stopSession()">
+              <i class="fas fa-stop me-2"></i>إيقاف الجلسة
+            </button>
+          </div>
+
+          <!-- إحصائيات -->
+          <div class="mt-3 pt-3 border-top">
+            <div class="d-flex justify-content-between mb-1">
+              <span class="small">محاولات ناجحة:</span>
+              <strong class="text-success" id="statSuccess">0</strong>
+            </div>
+            <div class="d-flex justify-content-between mb-1">
+              <span class="small">غير معروف:</span>
+              <strong class="text-warning" id="statUnknown">0</strong>
+            </div>
+            <div class="d-flex justify-content-between">
+              <span class="small">تكرارات:</span>
+              <strong class="text-muted" id="statDup">0</strong>
+            </div>
+          </div>
+
+          <!-- حالة الاتصال -->
+          <div id="syncStatus" class="alert alert-secondary mt-3 py-2 small d-none"></div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- منطقة الكاميرا -->
+    <div class="col-lg-9">
+      <div class="card shadow">
+        <div class="card-header text-white" style="background:#5e3a8c;">
+          <h4 class="mb-0">
+            <i class="fas fa-camera me-2"></i>الحضور بالوجه — يعمل بدون إنترنت
+            <span id="offlineBadge" class="badge bg-warning text-dark ms-2 d-none">
+              <i class="fas fa-wifi-slash me-1"></i>أوف لاين
+            </span>
+          </h4>
+        </div>
+        <div class="card-body p-4">
+
+          <!-- انتظار -->
+          <div id="waitingState" class="text-center py-5">
+            <i class="fas fa-user-check fa-5x text-muted mb-4"></i>
+            <h3 class="text-muted">اختر المادة وابدأ الجلسة</h3>
+            <p class="text-muted">التعرف يعمل محلياً في المتصفح — لا يحتاج إنترنت</p>
+          </div>
+
+          <!-- الجلسة النشطة -->
+          <div id="activeState" class="d-none">
+            <div class="row">
+              <div class="col-md-8">
+                <div class="position-relative" style="background:#000;border-radius:12px;overflow:hidden;">
+                  <video id="cameraVideo" autoplay playsinline muted style="width:100%;height:auto;display:block;"></video>
+                  <canvas id="overlayCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></canvas>
+                  <div id="guidanceMsg" class="position-absolute bottom-0 start-0 end-0 p-3 text-center" style="background:rgba(0,0,0,0.7);">
+                    <p class="text-white mb-0 fw-bold">ضع وجهك داخل الإطار</p>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div id="resultCard" class="card h-100 border-0" style="background:#f8f9fa;">
+                  <div class="card-body d-flex flex-column justify-content-center align-items-center text-center">
+                    <i class="fas fa-user-circle fa-4x text-muted mb-3"></i>
+                    <h5 class="text-muted">في انتظار التعرف...</h5>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <h5><i class="fas fa-list me-2"></i>سجل الحضور
+                <span id="pendingSyncBadge" class="badge bg-warning text-dark ms-2 d-none">
+                  <i class="fas fa-cloud-upload-alt me-1"></i>في انتظار المزامنة: <span id="pendingCount">0</span>
+                </span>
+              </h5>
+              <div id="attendanceLog" class="list-group mt-2" style="max-height:300px;overflow-y:auto;"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/face-api.min.js"></script>
+<script>
+// ── إعدادات ──────────────────────────────────────────────────────────────────
+const MODELS_URL = '/static/models';
+let modelsLoaded  = false;
+let faceProfiles  = [];   // [{id, full_name, student_code, group_name, descriptor: Float32Array}]
+let videoStream   = null;
+let sessionActive = false;
+let recInterval   = null;
+let isProcessing  = false;
+let subjectId     = null;
+let stats         = {success:0, unknown:0, dup:0};
+let attendedToday = new Set(); // student_ids سجلوا في هذه الجلسة
+
+// ── IndexedDB للحضور الأوف لاين ─────────────────────────────────────────────
+const OfflineDB = {
+  _db: null,
+  async open() {
+    if (this._db) return this._db;
+    return new Promise((res, rej) => {
+      const req = indexedDB.open('FaceOfflineAttendanceDB', 1);
+      req.onupgradeneeded = e => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('queue')) {
+          const s = db.createObjectStore('queue', {keyPath:'localId', autoIncrement:true});
+          s.createIndex('synced','synced',{unique:false});
+        }
+      };
+      req.onsuccess = () => { this._db = req.result; res(this._db); };
+      req.onerror  = () => rej(req.error);
+    });
+  },
+  async add(record) {
+    const db = await this.open();
+    return new Promise((res,rej) => {
+      const tx = db.transaction('queue','readwrite');
+      const req = tx.objectStore('queue').add({...record, synced:false, savedAt: new Date().toISOString()});
+      req.onsuccess = () => res(req.result);
+      tx.onerror = () => rej(tx.error);
+    });
+  },
+  async getPending() {
+    const db = await this.open();
+    return new Promise((res,rej) => {
+      const req = db.transaction('queue','readonly').objectStore('queue').getAll();
+      req.onsuccess = () => res(req.result.filter(r => !r.synced));
+      req.onerror  = () => rej(req.error);
+    });
+  },
+  async markSynced(localId) {
+    const db = await this.open();
+    return new Promise((res,rej) => {
+      const tx = db.transaction('queue','readwrite');
+      const store = tx.objectStore('queue');
+      const req = store.get(localId);
+      req.onsuccess = () => { if(req.result) store.put({...req.result, synced:true}); };
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  }
+};
+
+// ── تحميل نماذج face-api.js ──────────────────────────────────────────────────
+async function loadModels() {
+  try {
+    setModelStatus('warning', 'جاري تحميل نماذج الذكاء الاصطناعي...');
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODELS_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODELS_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODELS_URL)
+    ]);
+    modelsLoaded = true;
+    setModelStatus('success', '✓ النماذج جاهزة — يعمل بدون إنترنت');
+    await loadFaceDescriptors();
+  } catch(e) {
+    console.error('[Models]', e);
+    setModelStatus('danger', 'فشل تحميل النماذج: ' + e.message);
+  }
+}
+
+// ── جلب face descriptors من السيرفر وحفظها في IndexedDB ─────────────────────
+const DESCRIPTORS_CACHE_KEY = 'faceDescriptorsCache';
+
+async function loadFaceDescriptors() {
+  // أولاً: جرب من السيرفر
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const resp = await fetch('/api/face/descriptors', {signal: controller.signal});
+    clearTimeout(timeout);
+    const data = await resp.json();
+
+    if (data.success && data.students.length > 0) {
+      setModelStatus('warning', `<i class="fas fa-spinner fa-spin me-1"></i>جاري معالجة صور ${data.students.length} طالب...`);
+
+      // استخراج descriptors من الصور
+      const profiles = [];
+      for (const s of data.students) {
+        try {
+          let descriptor = null;
+          if (s.face_image_b64) {
+            descriptor = await getDescriptorFromBase64(s.face_image_b64);
+          } else if (s.face_image_url) {
+            // fallback: حمّل الصورة من الـ URL
+            descriptor = await getDescriptorFromUrl(s.face_image_url);
+          }
+          if (descriptor) {
+            profiles.push({
+              id: s.id,
+              full_name: s.full_name,
+              student_code: s.student_code,
+              group_name: s.group_name,
+              descriptor
+            });
+          }
+        } catch(e) {
+          console.warn(`[Descriptor] فشل استخراج descriptor للطالب ${s.full_name}:`, e.message);
+        }
+      }
+
+      faceProfiles = profiles;
+
+      // حفظ في localStorage (نحفظ الـ descriptor كـ array عادي)
+      const cacheData = profiles.map(p => ({...p, descriptor: Array.from(p.descriptor)}));
+      localStorage.setItem(DESCRIPTORS_CACHE_KEY, JSON.stringify(cacheData));
+
+      showFaceDataStatus(`✓ ${faceProfiles.length} طالب مسجل — محفوظ للاستخدام بدون إنترنت`, 'success');
+      enableStartButton();
+      return;
+    }
+    showFaceDataStatus(`⚠️ لا يوجد طلاب مسجلون في النظام — سجّل وجوه الطلاب أولاً`, 'warning');
+    enableStartButton();
+    return;
+  } catch(e) {
+    console.warn('[Descriptors] السيرفر غير متاح، نحاول من الـ cache:', e.message);
+  }
+
+  // ثانياً: من localStorage cache
+  try {
+    const cached = localStorage.getItem(DESCRIPTORS_CACHE_KEY);
+    if (cached) {
+      const students = JSON.parse(cached);
+      faceProfiles = students.map(s => ({
+        ...s,
+        descriptor: new Float32Array(s.descriptor)
+      }));
+      showFaceDataStatus(`✓ ${faceProfiles.length} طالب (من الكاش) — وضع أوف لاين`, 'warning');
+      enableStartButton();
+      return;
+    }
+  } catch(e) { console.error('[Descriptors Cache]', e); }
+
+  // لا يوجد كاش
+  showFaceDataStatus('⚠️ لا توجد بيانات وجوه محفوظة — ستحتاج نتاً للتعرف', 'warning');
+  enableStartButton();
+}
+
+// استخراج descriptor من URL
+async function getDescriptorFromUrl(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = async () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width; canvas.height = img.height;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        const ctx = canvas.getContext('2d');
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const b64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+        resolve(await getDescriptorFromBase64(b64));
+      } catch(e) { reject(e); }
+    };
+    img.onerror = () => reject(new Error('فشل تحميل الصورة من URL'));
+    img.src = url;
+  });
+}
+
+// استخراج descriptor من صورة base64
+async function getDescriptorFromBase64(b64) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = async () => {
+      try {
+        const options = new faceapi.TinyFaceDetectorOptions({inputSize: 160, scoreThreshold: 0.3});
+        const detection = await faceapi
+          .detectSingleFace(img, options)
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+        if (detection) {
+          resolve(detection.descriptor);
+        } else {
+          // fallback: استخدم الصورة كاملة
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width; canvas.height = img.height;
+          canvas.getContext('2d').drawImage(img, 0, 0);
+          const det2 = await faceapi
+            .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions({inputSize:224, scoreThreshold:0.2}))
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+          resolve(det2 ? det2.descriptor : null);
+        }
+      } catch(e) { reject(e); }
+    };
+    img.onerror = () => reject(new Error('فشل تحميل الصورة'));
+    img.src = 'data:image/jpeg;base64,' + b64;
+  });
+}
+
+function enableStartButton() {
+  if (modelsLoaded) {
+    document.getElementById('startBtn').disabled = false;
+  }
+}
+
+// ── بدء الجلسة ───────────────────────────────────────────────────────────────
+async function startSession() {
+  subjectId = document.getElementById('subjectSelect').value;
+  if (!subjectId) { showToast('اختر المادة أولاً','warning'); return; }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast('متصفحك لا يدعم الكاميرا','error'); return;
+  }
+
+  try {
+    const attempts = [
+      {video:{facingMode:{ideal:'user'},width:{ideal:640},height:{ideal:480}}},
+      {video:{facingMode:'user'}},
+      {video:{width:{ideal:640},height:{ideal:480}}},
+      {video:true}
+    ];
+    for (const c of attempts) {
+      try { videoStream = await navigator.mediaDevices.getUserMedia(c); break; }
+      catch(e) { console.warn('[Camera]', e.message); }
+    }
+    if (!videoStream) throw new Error('لم يتم فتح الكاميرا');
+
+    const video = document.getElementById('cameraVideo');
+    video.srcObject = videoStream;
+    await new Promise(r => { video.onloadedmetadata = r; setTimeout(r,3000); });
+    try { await video.play(); } catch(e) {}
+
+    sessionActive = true;
+    attendedToday.clear();
+    stats = {success:0, unknown:0, dup:0};
+    updateStats();
+
+    document.getElementById('waitingState').classList.add('d-none');
+    document.getElementById('activeState').classList.remove('d-none');
+    document.getElementById('startBtn').classList.add('d-none');
+    document.getElementById('stopBtn').classList.remove('d-none');
+
+    drawGuide();
+    startRecognitionLoop();
+    updatePendingBadge();
+
+    showToast('الجلسة بدأت — يعمل بدون إنترنت', 'success');
+  } catch(e) {
+    console.error(e);
+    showToast(e.message || 'فشل فتح الكاميرا', 'error');
+  }
+}
+
+// ── إيقاف الجلسة ─────────────────────────────────────────────────────────────
+async function stopSession() {
+  sessionActive = false;
+  if (recInterval) { clearTimeout(recInterval); recInterval = null; }
+  if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
+
+  document.getElementById('activeState').classList.add('d-none');
+  document.getElementById('waitingState').classList.remove('d-none');
+  document.getElementById('stopBtn').classList.add('d-none');
+  document.getElementById('startBtn').classList.remove('d-none');
+
+  showToast('تم إيقاف الجلسة', 'info');
+  syncPending();
+}
+
+// ── حلقة التعرف ──────────────────────────────────────────────────────────────
+function startRecognitionLoop() {
+  if (!sessionActive) return;
+  recInterval = setTimeout(async () => {
+    recInterval = null;
+    if (!sessionActive) return;
+    if (!isProcessing) await recognize();
+    startRecognitionLoop();
+  }, 1500);
+}
+
+async function recognize() {
+  if (isProcessing) return;
+  isProcessing = true;
+  const video = document.getElementById('cameraVideo');
+
+  try {
+    if (!video.videoWidth || video.readyState < 2) return;
+
+    const threshold = parseInt(document.getElementById('thresholdSlider').value) / 100;
+    const options = new faceapi.TinyFaceDetectorOptions({inputSize:320, scoreThreshold:0.4});
+
+    const detection = await faceapi
+      .detectSingleFace(video, options)
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+
+    if (!detection) {
+      updateGuidance('ضع وجهك داخل الإطار');
+      return;
+    }
+
+    if (faceProfiles.length === 0) {
+      updateGuidance('⚠️ لا توجد بيانات وجوه — سجّل وجوه الطلاب أولاً');
+      return;
+    }
+
+    // مقارنة مع الوجوه المسجلة
+    const queryDescriptor = detection.descriptor;
+    let bestMatch = null;
+    let bestDist  = 1.0;
+
+    for (const profile of faceProfiles) {
+      const dist = faceapi.euclideanDistance(queryDescriptor, profile.descriptor);
+      if (dist < bestDist) { bestDist = dist; bestMatch = profile; }
+    }
+
+    const confidence = Math.max(0, 1 - bestDist);
+
+    if (bestDist > threshold) {
+      // وجه غير معروف
+      stats.unknown++;
+      updateStats();
+      updateGuidance('وجه غير معروف — حاول مجدداً');
+      showResult(null, confidence, false);
+      return;
+    }
+
+    // تحقق من التكرار
+    if (attendedToday.has(bestMatch.id)) {
+      stats.dup++;
+      updateStats();
+      showToast(`${bestMatch.full_name} مسجل مسبقاً`, 'warning');
+      return;
+    }
+
+    // تسجيل الحضور
+    attendedToday.add(bestMatch.id);
+    stats.success++;
+    updateStats();
+
+    const record = {
+      student_id:   bestMatch.id,
+      student_name: bestMatch.full_name,
+      student_code: bestMatch.student_code,
+      subject_id:   parseInt(subjectId),
+      confidence:   confidence,
+      recorded_at:  new Date().toISOString()
+    };
+
+    // حفظ محلياً
+    const localId = await OfflineDB.add(record);
+
+    // محاولة رفع للسيرفر مباشرة
+    try {
+      const resp = await fetch('/api/face/attendance/sync', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(record),
+        signal: AbortSignal.timeout(5000)
+      });
+      const result = await resp.json();
+      if (result.success || result.already_registered) {
+        await OfflineDB.markSynced(localId);
+      }
+    } catch(e) {
+      console.warn('[Sync] حضور محفوظ محلياً، سيُزامَن لاحقاً');
+    }
+
+    showResult(bestMatch, confidence, true);
+    addToLog(bestMatch, confidence);
+    updatePendingBadge();
+    playBeep();
+
+    // cooldown
+    isProcessing = true;
+    setTimeout(() => { isProcessing = false; }, 2500);
+    return;
+
+  } catch(e) {
+    console.error('[Recognition]', e);
+    updateGuidance('خطأ في التعرف — حاول مجدداً');
+  } finally {
+    isProcessing = false;
+  }
+}
+
+// ── مزامنة السجلات المعلقة ───────────────────────────────────────────────────
+async function syncPending() {
+  try {
+    const pending = await OfflineDB.getPending();
+    if (pending.length === 0) return;
+
+    const syncDiv = document.getElementById('syncStatus');
+    syncDiv.classList.remove('d-none');
+    syncDiv.className = 'alert alert-warning mt-3 py-2 small';
+    syncDiv.innerHTML = `<i class="fas fa-sync fa-spin me-1"></i>مزامنة ${pending.length} سجل...`;
+
+    let synced = 0;
+    for (const rec of pending) {
+      try {
+        const resp = await fetch('/api/face/attendance/sync', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(rec),
+          signal: AbortSignal.timeout(8000)
+        });
+        const data = await resp.json();
+        if (data.success || data.already_registered) {
+          await OfflineDB.markSynced(rec.localId);
+          synced++;
+        }
+      } catch(e) {
+        console.warn('[Sync] السيرفر غير متاح:', e.message);
+        break;
+      }
+    }
+
+    if (synced > 0) {
+      syncDiv.className = 'alert alert-success mt-3 py-2 small';
+      syncDiv.innerHTML = `<i class="fas fa-check me-1"></i>تمت مزامنة ${synced} سجل`;
+      updatePendingBadge();
+    } else {
+      syncDiv.innerHTML = `<i class="fas fa-clock me-1"></i>في انتظار الاتصال للمزامنة`;
+    }
+  } catch(e) { console.error('[Sync]', e); }
+}
+
+async function updatePendingBadge() {
+  try {
+    const pending = await OfflineDB.getPending();
+    const badge = document.getElementById('pendingSyncBadge');
+    const count = document.getElementById('pendingCount');
+    if (pending.length > 0) {
+      badge.classList.remove('d-none');
+      count.textContent = pending.length;
+    } else {
+      badge.classList.add('d-none');
+    }
+  } catch(e) {}
+}
+
+// ── واجهة ─────────────────────────────────────────────────────────────────────
+function drawGuide() {
+  const video  = document.getElementById('cameraVideo');
+  const canvas = document.getElementById('overlayCanvas');
+  const ctx    = canvas.getContext('2d');
+
+  function draw() {
+    if (!videoStream) return;
+    canvas.width  = video.videoWidth  || 640;
+    canvas.height = video.videoHeight || 480;
+    const w = canvas.width * 0.4, h = canvas.height * 0.5;
+    const x = (canvas.width - w) / 2, y = (canvas.height - h) / 2;
+    ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 3; ctx.setLineDash([10,10]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+    const L = 30;
+    [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]].forEach(([cx,cy,sx,sy]) => {
+      ctx.beginPath(); ctx.moveTo(cx, cy+sy*L); ctx.lineTo(cx, cy); ctx.lineTo(cx+sx*L, cy); ctx.stroke();
+    });
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+function showResult(profile, confidence, success) {
+  const card = document.getElementById('resultCard');
+  if (success && profile) {
+    card.innerHTML = `
+      <div class="card-body text-center">
+        <i class="fas fa-check-circle fa-4x text-success mb-3"></i>
+        <h4 class="text-success">${profile.full_name}</h4>
+        <p class="text-muted mb-1">${profile.student_code}</p>
+        <div class="badge bg-success fs-6 px-3 py-2">${Math.round(confidence*100)}% تطابق</div>
+        <p class="text-success mt-2 fw-bold"><i class="fas fa-check me-1"></i>تم تسجيل الحضور</p>
+      </div>`;
+  } else {
+    card.innerHTML = `
+      <div class="card-body text-center">
+        <i class="fas fa-times-circle fa-4x text-danger mb-3"></i>
+        <h5 class="text-danger">وجه غير معروف</h5>
+        <p class="text-muted">${Math.round(confidence*100)}% أعلى تطابق</p>
+      </div>`;
+  }
+}
+
+function addToLog(profile, confidence) {
+  const log  = document.getElementById('attendanceLog');
+  const time = new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
+  const entry = document.createElement('div');
+  entry.className = 'list-group-item animate-fade-in';
+  entry.innerHTML = `
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <h6 class="mb-1">${profile.full_name}</h6>
+        <small class="text-muted">${profile.student_code}</small>
+      </div>
+      <div class="text-end">
+        <span class="badge bg-success">${time}</span>
+        <small class="d-block text-muted">${Math.round(confidence*100)}%</small>
+      </div>
+    </div>`;
+  log.insertBefore(entry, log.firstChild);
+}
+
+function updateGuidance(msg) {
+  document.getElementById('guidanceMsg').innerHTML =
+    `<p class="text-white mb-0 fw-bold"><i class="fas fa-info-circle me-2"></i>${msg}</p>`;
+}
+
+function updateStats() {
+  document.getElementById('statSuccess').textContent = stats.success;
+  document.getElementById('statUnknown').textContent = stats.unknown;
+  document.getElementById('statDup').textContent     = stats.dup;
+}
+
+function setModelStatus(type, msg) {
+  const el = document.getElementById('modelStatus');
+  el.className = `alert alert-${type} py-2 small`;
+  el.innerHTML = msg;
+}
+
+function showFaceDataStatus(msg, type) {
+  const el = document.getElementById('faceDataStatus');
+  el.classList.remove('d-none');
+  el.className = `alert alert-${type} py-2 small`;
+  el.textContent = msg;
+}
+
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = 880; g.gain.value = 0.1;
+    o.start(); o.stop(ctx.currentTime + 0.15);
+  } catch(e) {}
+}
+
+function showToast(msg, type='success') {
+  if (!window.Swal) { alert(msg); return; }
+  const icons = {success:'✅',error:'❌',warning:'⚠️',info:'ℹ️'};
+  Swal.fire({ title: icons[type]||'', text: msg, icon: type, toast:true,
+    position:'top-end', showConfirmButton:false, timer:3000, timerProgressBar:true });
+}
+
+// ── تحميل المواد ──────────────────────────────────────────────────────────────
+let allSubjects = [];
+
+function filterSubjects() {
+  const grade = document.getElementById('gradeFilter').value;
+  const filtered = grade ? allSubjects.filter(s => s.grade === grade) : allSubjects;
+  const sel = document.getElementById('subjectSelect');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">اختر المادة...</option>';
+  filtered.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = `${s.name} — ${s.teacher_name}`;
+    sel.appendChild(opt);
+  });
+  if (cur && filtered.some(s => String(s.id) === cur)) sel.value = cur;
+}
+
+async function loadSubjects() {
+  let subjects = null;
+
+  try {
+    const resp = await fetch('/api/get-subjects');
+    const data = await resp.json();
+    if (data.success) {
+      subjects = data.subjects;
+      localStorage.setItem('cachedSubjects', JSON.stringify(subjects));
+    }
+  } catch(e) {
+    const cached = localStorage.getItem('cachedSubjects');
+    if (cached) subjects = JSON.parse(cached);
+  }
+
+  if (!subjects) return;
+  allSubjects = subjects;
+
+  // بناء قائمة المراحل
+  const grades = [...new Set(subjects.map(s => s.grade).filter(Boolean))];
+  const gradeOrder = ['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة'];
+  grades.sort((a,b) => {
+    const ai = gradeOrder.indexOf(a), bi = gradeOrder.indexOf(b);
+    return (ai===-1?99:ai) - (bi===-1?99:bi);
+  });
+  const gradeEl = document.getElementById('gradeFilter');
+  gradeEl.innerHTML = '<option value="">كل المراحل</option>';
+  grades.forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g; opt.textContent = 'المرحلة ' + g;
+    gradeEl.appendChild(opt);
+  });
+
+  filterSubjects();
+}
+
+// ── تهيئة ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('thresholdSlider').addEventListener('input', function() {
+    document.getElementById('thresholdValue').textContent = this.value + '%';
+  });
+
+  // حالة الاتصال
+  function updateOnlineStatus() {
+    const badge = document.getElementById('offlineBadge');
+    if (!navigator.onLine) {
+      badge.classList.remove('d-none');
+    } else {
+      badge.classList.add('d-none');
+      syncPending();
+      // تحديث الـ descriptors
+      loadFaceDescriptors();
+    }
+  }
+  window.addEventListener('online',  updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+  updateOnlineStatus();
+
+  // مزامنة كل دقيقة
+  setInterval(syncPending, 60000);
+
+  await loadSubjects();
+  await loadModels();
+});
+
+window.addEventListener('beforeunload', () => {
+  if (videoStream) videoStream.getTracks().forEach(t => t.stop());
+});
+</script>
+
+<style>
+.animate-fade-in { animation: fadeIn .4s; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+</style>
+{% endblock %}

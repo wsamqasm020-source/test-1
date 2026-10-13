@@ -1,0 +1,19 @@
+ملاحظة: يجب تشغيل الأمر التالي كمدير (Administrator) في PowerShell
+
+الطريقة:
+1. ابحث عن "PowerShell" في قائمة ابدأ
+2. انقر بالزر الأيمن → "Run as Administrator"
+3. انسخ الأمر التالي والصقه:
+
+New-NetFirewallRule -DisplayName 'Attendance System LAN' -Direction Inbound -Protocol TCP -LocalPort 5000 -Action Allow -Profile Private
+
+أو شغّل ملف setup_firewall.ps1 الموجود في مجلد المشروع كمدير:
+Right-click على setup_firewall.ps1 → Run with PowerShell
+
+ما تفعله هذه القاعدة:
+- تسمح بالاتصال الوارد على المنفذ 5000 (TCP)
+- للشبكة الخاصة (Private) فقط — لا تفتح المنفذ على الإنترنت
+- الاسم: Attendance System LAN
+
+للتحقق بعد التنفيذ:
+Get-NetFirewallRule -DisplayName 'Attendance System LAN'

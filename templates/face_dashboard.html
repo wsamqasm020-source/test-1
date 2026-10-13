@@ -1,0 +1,358 @@
+{% extends 'base.html' %}
+
+{% block title %}لوحة Face Recognition{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <div>
+                <h2>
+                    <i class="fas fa-chart-line me-2"></i>
+                    لوحة معلومات التعرف على الوجه
+                </h2>
+                <p class="text-muted">إحصائيات وتقارير شاملة لنظام Face Recognition</p>
+            </div>
+            <div>
+                <button class="btn btn-outline-info" onclick="showDiagnostic()">
+                    <i class="fas fa-stethoscope me-2"></i>تشخيص النظام
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- إحصائيات عامة -->
+    <div class="row mb-4">
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card text-white bg-primary shadow h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title text-white-50">إجمالي الطلاب</h6>
+                            <h2 class="mb-0" id="total_students">-</h2>
+                        </div>
+                        <div>
+                            <i class="fas fa-users fa-3x opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card text-white bg-success shadow h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title text-white-50">وجوه مسجلة</h6>
+                            <h2 class="mb-0" id="enrolled_students">-</h2>
+                        </div>
+                        <div>
+                            <i class="fas fa-user-check fa-3x opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card text-white bg-warning shadow h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title text-white-50">غير مسجلين</h6>
+                            <h2 class="mb-0" id="not_enrolled_students">-</h2>
+                        </div>
+                        <div>
+                            <i class="fas fa-user-times fa-3x opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card text-white bg-info shadow h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title text-white-50">نسبة التغطية</h6>
+                            <h2 class="mb-0" id="coverage_percentage">-%</h2>
+                        </div>
+                        <div>
+                            <i class="fas fa-chart-pie fa-3x opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- إحصائيات اليوم -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header bg-gradient-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-calendar-day me-2"></i>
+                        إحصائيات اليوم
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3 mb-3">
+                            <div class="border rounded p-3">
+                                <h3 class="text-success mb-2" id="today_success">-</h3>
+                                <p class="text-muted mb-0">تعرف ناجح</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="border rounded p-3">
+                                <h3 class="text-danger mb-2" id="today_failed">-</h3>
+                                <p class="text-muted mb-0">محاولات فاشلة</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="border rounded p-3">
+                                <h3 class="text-warning mb-2" id="today_unknown">-</h3>
+                                <p class="text-muted mb-0">وجوه غير معروفة</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="border rounded p-3">
+                                <h3 class="text-muted mb-2" id="today_duplicate">-</h3>
+                                <p class="text-muted mb-0">محاولات تكرار</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mt-3">
+                        <div class="col-md-6 mb-3">
+                            <div class="border rounded p-3">
+                                <h3 class="text-info mb-2" id="today_poor_quality">-</h3>
+                                <p class="text-muted mb-0">جودة منخفضة</p>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="border rounded p-3">
+                                <h3 class="text-secondary mb-2" id="today_multiple_faces">-</h3>
+                                <p class="text-muted mb-0">وجوه متعددة</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- سجل المحاولات الأخيرة -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-history me-2"></i>
+                        آخر محاولات التعرف
+                    </h5>
+                    <button class="btn btn-sm btn-primary" onclick="loadRecentLogs()">
+                        <i class="fas fa-sync me-1"></i>تحديث
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>الوقت</th>
+                                    <th>الطالب</th>
+                                    <th>النتيجة</th>
+                                    <th>درجة الثقة</th>
+                                    <th>السبب</th>
+                                </tr>
+                            </thead>
+                            <tbody id="logsTableBody">
+                                <tr>
+                                    <td colspan="5" class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status"></div>
+                                        <p class="mt-2 text-muted">جاري التحميل...</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- روابط سريعة -->
+    <div class="row mt-4">
+        <div class="col-md-4 mb-3">
+            <a href="{{ url_for('face_management_page') }}" class="text-decoration-none">
+                <div class="card shadow-sm h-100 hover-lift">
+                    <div class="card-body text-center">
+                        <i class="fas fa-user-cog fa-3x text-primary mb-3"></i>
+                        <h5>إدارة الوجوه</h5>
+                        <p class="text-muted">تسجيل وإدارة بيانات الوجه للطلاب</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-md-4 mb-3">
+            <a href="{{ url_for('face_attendance_page') }}" class="text-decoration-none">
+                <div class="card shadow-sm h-100 hover-lift">
+                    <div class="card-body text-center">
+                        <i class="fas fa-camera fa-3x text-success mb-3"></i>
+                        <h5>الحضور بالوجه</h5>
+                        <p class="text-muted">بدء جلسة حضور بالتعرف على الوجه</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-md-4 mb-3">
+            <a href="{{ url_for('settings_page') }}" class="text-decoration-none">
+                <div class="card shadow-sm h-100 hover-lift">
+                    <div class="card-body text-center">
+                        <i class="fas fa-cog fa-3x text-info mb-3"></i>
+                        <h5>الإعدادات</h5>
+                        <p class="text-muted">تخصيص إعدادات Face Recognition</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+.hover-lift {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.hover-lift:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15) !important;
+}
+
+.bg-gradient-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+</style>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadStats();
+    loadRecentLogs();
+    
+    // تحديث تلقائي كل 30 ثانية
+    setInterval(() => {
+        loadStats();
+        loadRecentLogs();
+    }, 30000);
+});
+
+async function loadStats() {
+    try {
+        const response = await fetch('/api/face/stats');
+        const data = await response.json();
+
+        if (data.success) {
+            // إحصائيات عامة
+            document.getElementById('total_students').textContent = data.total_students;
+            document.getElementById('enrolled_students').textContent = data.enrolled_students;
+            document.getElementById('not_enrolled_students').textContent = data.not_enrolled_students;
+            
+            const coverage = data.total_students > 0 
+                ? Math.round((data.enrolled_students / data.total_students) * 100) 
+                : 0;
+            document.getElementById('coverage_percentage').textContent = coverage + '%';
+
+            // إحصائيات اليوم
+            const today = data.today_stats || {};
+            document.getElementById('today_success').textContent = today.successful || 0;
+            document.getElementById('today_failed').textContent = today.failed || 0;
+            document.getElementById('today_unknown').textContent = today.unknown_faces || 0;
+            document.getElementById('today_duplicate').textContent = today.duplicate_attempts || 0;
+            document.getElementById('today_poor_quality').textContent = today.poor_quality || 0;
+            document.getElementById('today_multiple_faces').textContent = today.multiple_faces || 0;
+        }
+    } catch (error) {
+        console.error('Error loading stats:', error);
+    }
+}
+
+async function loadRecentLogs() {
+    try {
+        const response = await fetch('/api/face/stats');
+        const data = await response.json();
+
+        if (data.success && data.recent_logs) {
+            renderLogs(data.recent_logs);
+        }
+    } catch (error) {
+        console.error('Error loading logs:', error);
+    }
+}
+
+function renderLogs(logs) {
+    const tbody = document.getElementById('logsTableBody');
+    
+    if (logs.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" class="text-center py-4 text-muted">
+                    لا توجد سجلات
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = logs.map(log => {
+        const resultBadge = getResultBadge(log.result);
+        const confidenceBadge = log.confidence 
+            ? `<span class="badge bg-secondary">${Math.round(log.confidence * 100)}%</span>`
+            : '-';
+        
+        return `
+            <tr>
+                <td>${formatDateTime(log.timestamp)}</td>
+                <td>${log.student_name || 'غير معروف'}</td>
+                <td>${resultBadge}</td>
+                <td>${confidenceBadge}</td>
+                <td>${log.reason || '-'}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getResultBadge(result) {
+    const badges = {
+        'SUCCESS': '<span class="badge bg-success">نجح</span>',
+        'UNKNOWN': '<span class="badge bg-warning">غير معروف</span>',
+        'LOW_CONFIDENCE': '<span class="badge bg-info">ثقة منخفضة</span>',
+        'NO_FACE': '<span class="badge bg-secondary">لا يوجد وجه</span>',
+        'MULTIPLE_FACES': '<span class="badge bg-danger">وجوه متعددة</span>',
+        'POOR_QUALITY': '<span class="badge bg-warning">جودة منخفضة</span>',
+        'DUPLICATE': '<span class="badge bg-muted">تكرار</span>'
+    };
+    return badges[result] || `<span class="badge bg-secondary">${result}</span>`;
+}
+
+function formatDateTime(timestamp) {
+    if (!timestamp) return '-';
+    const date = new Date(timestamp);
+    return date.toLocaleString('ar-EG', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+</script>
+{% endblock %}

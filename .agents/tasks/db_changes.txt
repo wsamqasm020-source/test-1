@@ -1,0 +1,40 @@
+تقرير تعديلات قاعدة البيانات — المرحلة الخامسة
+================================================
+
+الملف المعدَّل: database.py
+
+1. WAL Mode + busy_timeout + synchronous=NORMAL
+   - الموقع: دالة get_db_connection() — بعد conn.row_factory = sqlite3.Row
+   - التعديل: أضيف:
+       conn.execute('PRAGMA journal_mode=WAL')
+       conn.execute('PRAGMA busy_timeout=5000')
+       conn.execute('PRAGMA synchronous=NORMAL')
+   - التحقق: python -c "..." أعاد journal_mode: wal و busy_timeout: 5000 ✓
+
+2. check_same_thread=False
+   - الموقع: نفس دالة get_db_connection()
+   - التعديل: sqlite3.connect(DATABASE, check_same_thread=False)
+   - السبب: Flask يشغّل الطلبات في threads منفصلة؛ كل طلب ينشئ connection خاصاً به
+     لذا هذا آمن ولا يشارك connections بين threads.
+
+3. UNIQUE INDEX على attendance(student_id, subject_id, attendance_date)
+   - الموقع: نهاية دالة init_database() — قبل conn.close() الأخير
+   - التعديل: migration يُنفَّذ عند كل بدء تشغيل:
+       CREATE UNIQUE INDEX IF NOT EXISTS uix_attendance_student_subject_date
+       ON attendance (student_id, subject_id, attendance_date)
+   - السبب: يمنع التكرار على مستوى قاعدة البيانات حتى عند الطلبات المتزامنة
+   - ملاحظة: IF NOT EXISTS آمن — يتخطى إذا كان الـ index موجوداً بالفعل
+
+4. INSERT OR IGNORE في record_attendance()
+   - الموقع: دالة record_attendance() — بدل INSERT العادي
+   - التعديل: INSERT OR IGNORE INTO attendance ...
+     + فحص cursor.rowcount == 0 لإرجاع False عند التكرار
+   - السبب: طبقة حماية ثانية — إذا تجاوزت طلبات متزامنة فحص SELECT،
+     يتكفل الـ UNIQUE index بمنع الإدراج المكرر بصمت.
+   - السلوك: يُرجع False عند التكرار (نفس سلوك الكود القديم)
+
+النتيجة:
+- كل connection يفعّل WAL تلقائياً — يسمح بقراءات متزامنة مع كتابة واحدة
+- busy_timeout=5000 يجعل SQLite ينتظر 5 ثوانٍ قبل رفع SQLITE_BUSY
+- UNIQUE index يضمن عدم التكرار على مستوى قاعدة البيانات
+- INSERT OR IGNORE يضمن معالجة آمنة لـ IntegrityError دون استثناء

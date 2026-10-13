@@ -1,0 +1,684 @@
+{% extends 'base.html' %}
+
+{% block title %}الحضور بالوجه - Face Recognition{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- الإعدادات الجانبية -->
+        <div class="col-lg-3 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-cog me-2"></i>إعدادات الجلسة
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- اختيار المادة -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">المادة</label>
+                        <select id="subjectSelect" class="form-select">
+                            <option value="">اختر المادة...</option>
+                        </select>
+                    </div>
+
+                    <!-- عتبة التعرف -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            دقة التعرف
+                            <span class="badge bg-info" id="thresholdValue">60%</span>
+                        </label>
+                        <input type="range" class="form-range" id="thresholdSlider" 
+                               min="50" max="90" value="60" step="5">
+                        <small class="text-muted d-block">
+                            أعلى = أدق (قد يفشل أحياناً) | أقل = أسرع (قد يخطئ أحياناً)
+                        </small>
+                    </div>
+
+                    <!-- وضع الجلسة -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">وضع الجلسة</label>
+                        <select id="sessionModeSelect" class="form-select">
+                            <option value="classroom">Classroom Mode (تلقائي)</option>
+                            <option value="manual">Manual Mode (يدوي)</option>
+                        </select>
+                        <small class="text-muted d-block mt-1">
+                            التلقائي: يسجل الحضور مباشرة عند التعرف<br>
+                            اليدوي: يطلب تأكيد المدرس
+                        </small>
+                    </div>
+
+                    <!-- زر البدء -->
+                    <div class="d-grid gap-2">
+                        <button id="startSessionBtn" class="btn btn-success btn-lg" onclick="startFaceSession()">
+                            <i class="fas fa-play me-2"></i>بدء جلسة الحضور
+                        </button>
+                        <button id="stopSessionBtn" class="btn btn-danger d-none" onclick="stopFaceSession()">
+                            <i class="fas fa-stop me-2"></i>إيقاف الجلسة
+                        </button>
+                    </div>
+
+                    <!-- حالة الجلسة -->
+                    <div id="sessionStatus" class="alert alert-secondary mt-3 d-none">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            <span>جاري التحميل...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- إحصائيات سريعة -->
+            <div class="card shadow-sm mt-3">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-chart-line me-2"></i>إحصائيات الجلسة
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>محاولات ناجحة:</span>
+                        <strong class="text-success" id="stat_success">0</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>محاولات فاشلة:</span>
+                        <strong class="text-danger" id="stat_failed">0</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>وجوه غير معروفة:</span>
+                        <strong class="text-warning" id="stat_unknown">0</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>تكرارات:</span>
+                        <strong class="text-muted" id="stat_duplicate">0</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- منطقة الكاميرا والتعرف -->
+        <div class="col-lg-9">
+            <div class="card shadow">
+                <div class="card-header bg-gradient text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <h4 class="mb-0">
+                        <i class="fas fa-camera me-2"></i>Face Recognition Attendance
+                    </h4>
+                </div>
+                <div class="card-body p-4">
+                    
+                    <!-- حالة: في انتظار بدء الجلسة -->
+                    <div id="waitingState" class="text-center py-5">
+                        <i class="fas fa-user-check fa-5x text-muted mb-4"></i>
+                        <h3 class="text-muted">اختر المادة وابدأ الجلسة</h3>
+                        <p class="text-muted">سيتم فتح الكاميرا تلقائياً عند بدء جلسة الحضور</p>
+                    </div>
+
+                    <!-- حالة: الجلسة نشطة -->
+                    <div id="activeState" class="d-none">
+                        <!-- الكاميرا -->
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="position-relative" style="background: #000; border-radius: 12px; overflow: hidden;">
+                                    <video id="cameraVideo" autoplay playsinline style="width: 100%; height: auto; display: block;"></video>
+                                    <canvas id="overlayCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+                                    
+                                    <!-- مؤشر التعرف -->
+                                    <div id="recognitionIndicator" class="position-absolute top-50 start-50 translate-middle d-none">
+                                        <div class="text-center">
+                                            <div class="spinner-border text-light" style="width: 3rem; height: 3rem;" role="status"></div>
+                                            <p class="text-white mt-3 fw-bold">جاري التحقق...</p>
+                                        </div>
+                                    </div>
+
+                                    <!-- رسالة التوجيه -->
+                                    <div id="guidanceMessage" class="position-absolute bottom-0 start-0 end-0 p-3 text-center" style="background: rgba(0,0,0,0.7);">
+                                        <p class="text-white mb-0 fw-bold">
+                                            <i class="fas fa-arrow-right me-2"></i>
+                                            ضع وجهك داخل الإطار
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- نتيجة التعرف -->
+                            <div class="col-md-4">
+                                <div id="recognitionResult" class="card h-100 border-0" style="background: #f8f9fa;">
+                                    <div class="card-body d-flex flex-column justify-content-center align-items-center text-center">
+                                        <i class="fas fa-user-circle fa-4x text-muted mb-3"></i>
+                                        <h5 class="text-muted">في انتظار التعرف...</h5>
+                                        <p class="text-muted small">سيظهر هنا اسم الطالب بعد التعرف عليه</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- سجل الحضور المباشر -->
+                        <div class="mt-4">
+                            <h5 class="mb-3">
+                                <i class="fas fa-list me-2"></i>سجل الحضور المباشر
+                            </h5>
+                            <div id="attendanceLog" class="list-group" style="max-height: 300px; overflow-y: auto;">
+                                <!-- سيتم ملؤها ديناميكياً -->
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: تأكيد الحضور (في الوضع اليدوي) -->
+<div class="modal fade" id="confirmAttendanceModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">تأكيد الحضور</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center py-4">
+                <img id="confirmStudentImage" src="" class="rounded-circle mb-3" style="width: 100px; height: 100px; object-fit: cover;" alt="">
+                <h4 id="confirmStudentName"></h4>
+                <p class="text-muted" id="confirmStudentCode"></p>
+                <div class="alert alert-info">
+                    <i class="fas fa-check-circle me-2"></i>
+                    درجة الثقة: <strong id="confirmConfidence"></strong>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">رفض</button>
+                <button type="button" class="btn btn-success" onclick="confirmAttendance()">
+                    <i class="fas fa-check me-2"></i>تأكيد الحضور
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentSession = null;
+let videoStream = null;
+let recognitionInterval = null;
+let sessionStats = {
+    success: 0,
+    failed: 0,
+    unknown: 0,
+    duplicate: 0
+};
+let pendingConfirmation = null;
+let isProcessing = false;
+let cooldownActive = false;
+
+// تحميل المواد عند بدء الصفحة
+document.addEventListener('DOMContentLoaded', function() {
+    loadSubjects();
+    
+    // Threshold slider
+    document.getElementById('thresholdSlider').addEventListener('input', function() {
+        document.getElementById('thresholdValue').textContent = this.value + '%';
+    });
+});
+
+async function loadSubjects() {
+    try {
+        const response = await fetch('/api/get-subjects');
+        const data = await response.json();
+        
+        if (data.success) {
+            const select = document.getElementById('subjectSelect');
+            select.innerHTML = '<option value="">اختر المادة...</option>';
+            
+            data.subjects.forEach(subject => {
+                const option = document.createElement('option');
+                option.value = subject.id;
+                option.textContent = `${subject.name} - ${subject.teacher_name} (${subject.grade})`;
+                select.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading subjects:', error);
+        showToast('فشل تحميل المواد', 'error');
+    }
+}
+
+async function startFaceSession() {
+    const subjectId = document.getElementById('subjectSelect').value;
+    if (!subjectId) {
+        showToast('يرجى اختيار المادة أولاً', 'warning');
+        return;
+    }
+
+    const threshold = document.getElementById('thresholdSlider').value / 100;
+    const sessionMode = document.getElementById('sessionModeSelect').value;
+
+    try {
+        // إنشاء الجلسة
+        const response = await fetch('/api/face/session/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                subject_id: parseInt(subjectId),
+                threshold: threshold,
+                session_name: `جلسة ${new Date().toLocaleString('ar-EG')}`
+            })
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+            throw new Error(data.message);
+        }
+
+        currentSession = {
+            id: data.session_id,
+            subject_id: subjectId,
+            threshold: threshold,
+            mode: sessionMode
+        };
+
+        // فتح الكاميرا
+        await startCamera();
+
+        // تحديث الواجهة
+        document.getElementById('waitingState').classList.add('d-none');
+        document.getElementById('activeState').classList.remove('d-none');
+        document.getElementById('startSessionBtn').classList.add('d-none');
+        document.getElementById('stopSessionBtn').classList.remove('d-none');
+        document.getElementById('sessionStatus').classList.remove('d-none');
+        document.getElementById('sessionStatus').innerHTML = `
+            <div class="d-flex align-items-center">
+                <div class="spinner-grow spinner-grow-sm text-success me-2"></div>
+                <span class="text-success">الجلسة نشطة</span>
+            </div>
+        `;
+
+        // بدء التعرف التلقائي
+        startContinuousRecognition();
+
+        showToast('تم بدء جلسة الحضور بنجاح', 'success');
+    } catch (error) {
+        console.error('Error starting session:', error);
+        showToast(error.message || 'فشل بدء الجلسة', 'error');
+    }
+}
+
+async function startCamera() {
+    try {
+        videoStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: 'user',
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            }
+        });
+
+        const video = document.getElementById('cameraVideo');
+        video.srcObject = videoStream;
+
+        await video.play();
+
+        // رسم إطار الوجه
+        drawFaceGuide();
+
+    } catch (error) {
+        console.error('Camera error:', error);
+        showToast('فشل فتح الكاميرا. تأكد من الأذونات', 'error');
+        throw error;
+    }
+}
+
+function drawFaceGuide() {
+    const video = document.getElementById('cameraVideo');
+    const canvas = document.getElementById('overlayCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function draw() {
+        if (!videoStream) return;
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        const faceWidth = canvas.width * 0.4;
+        const faceHeight = canvas.height * 0.5;
+        const x = (canvas.width - faceWidth) / 2;
+        const y = (canvas.height - faceHeight) / 2;
+
+        // رسم إطار منقط
+        ctx.strokeStyle = '#00ff00';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 10]);
+        ctx.strokeRect(x, y, faceWidth, faceHeight);
+
+        // رسم الزوايا
+        ctx.setLineDash([]);
+        const cornerLength = 30;
+        
+        // Top-left
+        ctx.beginPath();
+        ctx.moveTo(x, y + cornerLength);
+        ctx.lineTo(x, y);
+        ctx.lineTo(x + cornerLength, y);
+        ctx.stroke();
+
+        // Top-right
+        ctx.beginPath();
+        ctx.moveTo(x + faceWidth - cornerLength, y);
+        ctx.lineTo(x + faceWidth, y);
+        ctx.lineTo(x + faceWidth, y + cornerLength);
+        ctx.stroke();
+
+        // Bottom-left
+        ctx.beginPath();
+        ctx.moveTo(x, y + faceHeight - cornerLength);
+        ctx.lineTo(x, y + faceHeight);
+        ctx.lineTo(x + cornerLength, y + faceHeight);
+        ctx.stroke();
+
+        // Bottom-right
+        ctx.beginPath();
+        ctx.moveTo(x + faceWidth - cornerLength, y + faceHeight);
+        ctx.lineTo(x + faceWidth, y + faceHeight);
+        ctx.lineTo(x + faceWidth, y + faceHeight - cornerLength);
+        ctx.stroke();
+
+        requestAnimationFrame(draw);
+    }
+
+    draw();
+}
+
+function startContinuousRecognition() {
+    // التعرف كل 2 ثانية
+    recognitionInterval = setInterval(() => {
+        if (!isProcessing && !cooldownActive) {
+            captureAndRecognize();
+        }
+    }, 2000);
+}
+
+async function captureAndRecognize() {
+    if (isProcessing || cooldownActive) return;
+
+    isProcessing = true;
+
+    try {
+        const video = document.getElementById('cameraVideo');
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+
+        const imageData = canvas.toDataURL('image/jpeg', 0.8);
+
+        // إظهار مؤشر المعالجة
+        document.getElementById('recognitionIndicator').classList.remove('d-none');
+
+        const response = await fetch('/api/face/recognize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                image_data: imageData,
+                subject_id: currentSession.subject_id,
+                session_id: currentSession.id
+            })
+        });
+
+        const data = await response.json();
+
+        // إخفاء مؤشر المعالجة
+        document.getElementById('recognitionIndicator').classList.add('d-none');
+
+        if (data.success || data.already_registered) {
+            handleRecognitionSuccess(data);
+        } else {
+            handleRecognitionFailure(data);
+        }
+
+    } catch (error) {
+        console.error('Recognition error:', error);
+        document.getElementById('recognitionIndicator').classList.add('d-none');
+    } finally {
+        isProcessing = false;
+    }
+}
+
+function handleRecognitionSuccess(data) {
+    if (data.already_registered) {
+        sessionStats.duplicate++;
+        updateSessionStats();
+        showToast(`${data.student_name} مسجل حضور مسبقاً`, 'warning');
+        return;
+    }
+
+    sessionStats.success++;
+    updateSessionStats();
+
+    // عرض النتيجة
+    displayRecognitionResult(data, true);
+
+    // إضافة إلى السجل
+    addToAttendanceLog(data);
+
+    // صوت نجاح
+    playSuccessSound();
+
+    // Cooldown لمدة 3 ثواني
+    activateCooldown(3000);
+
+    showToast(`تم تسجيل حضور ${data.student_name}`, 'success');
+}
+
+function handleRecognitionFailure(data) {
+    const result = data.result || 'UNKNOWN';
+
+    if (result === 'NO_FACE') {
+        updateGuidanceMessage('لم يتم اكتشاف وجه. ضع وجهك داخل الإطار');
+    } else if (result === 'MULTIPLE_FACES') {
+        sessionStats.failed++;
+        updateSessionStats();
+        updateGuidanceMessage('يوجد أكثر من وجه. يجب أن يكون هناك شخص واحد فقط');
+    } else if (result === 'POOR_QUALITY') {
+        updateGuidanceMessage(data.message || 'جودة الصورة منخفضة');
+    } else if (result === 'LOW_CONFIDENCE') {
+        sessionStats.unknown++;
+        updateSessionStats();
+        displayRecognitionResult(data, false);
+        updateGuidanceMessage('لم يتم التعرف عليك. حاول مرة أخرى');
+    } else {
+        sessionStats.unknown++;
+        updateSessionStats();
+        updateGuidanceMessage(data.message || 'لم يتم التعرف على الوجه');
+    }
+}
+
+function displayRecognitionResult(data, success) {
+    const resultDiv = document.getElementById('recognitionResult');
+    
+    if (success) {
+        resultDiv.innerHTML = `
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-check-circle fa-4x text-success"></i>
+                </div>
+                <h4 class="text-success">${data.student_name}</h4>
+                <p class="text-muted mb-2">${data.student_code}</p>
+                <p class="text-muted mb-2">${data.grade || ''}</p>
+                <div class="badge bg-success fs-6 px-3 py-2">
+                    <i class="fas fa-star me-1"></i>
+                    ${Math.round(data.confidence * 100)}% تطابق
+                </div>
+                <p class="text-success mt-3 fw-bold">
+                    <i class="fas fa-check me-2"></i>تم تسجيل الحضور
+                </p>
+            </div>
+        `;
+    } else {
+        resultDiv.innerHTML = `
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-times-circle fa-4x text-danger"></i>
+                </div>
+                <h5 class="text-danger">فشل التعرف</h5>
+                <p class="text-muted">${data.message}</p>
+                ${data.confidence ? `
+                <div class="badge bg-warning text-dark fs-6 px-3 py-2">
+                    ${Math.round(data.confidence * 100)}% تطابق
+                </div>
+                ` : ''}
+            </div>
+        `;
+    }
+}
+
+function addToAttendanceLog(data) {
+    const log = document.getElementById('attendanceLog');
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    
+    const entry = document.createElement('div');
+    entry.className = 'list-group-item list-group-item-action animate-fade-in';
+    entry.innerHTML = `
+        <div class="d-flex w-100 justify-content-between align-items-center">
+            <div>
+                <h6 class="mb-1">${data.student_name}</h6>
+                <small class="text-muted">${data.student_code}</small>
+            </div>
+            <div class="text-end">
+                <span class="badge bg-success">${timeString}</span>
+                <small class="d-block text-muted">${Math.round(data.confidence * 100)}%</small>
+            </div>
+        </div>
+    `;
+    
+    log.insertBefore(entry, log.firstChild);
+}
+
+function updateGuidanceMessage(message) {
+    document.getElementById('guidanceMessage').innerHTML = `
+        <p class="text-white mb-0 fw-bold">
+            <i class="fas fa-info-circle me-2"></i>${message}
+        </p>
+    `;
+}
+
+function updateSessionStats() {
+    document.getElementById('stat_success').textContent = sessionStats.success;
+    document.getElementById('stat_failed').textContent = sessionStats.failed;
+    document.getElementById('stat_unknown').textContent = sessionStats.unknown;
+    document.getElementById('stat_duplicate').textContent = sessionStats.duplicate;
+}
+
+function activateCooldown(duration) {
+    cooldownActive = true;
+    updateGuidanceMessage('في انتظار الطالب التالي...');
+    
+    setTimeout(() => {
+        cooldownActive = false;
+        updateGuidanceMessage('ضع وجهك داخل الإطار');
+    }, duration);
+}
+
+function playSuccessSound() {
+    // إضافة صوت نجاح (اختياري)
+    try {
+        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGG0fPTgjMGHm7A7+OZSA0PVanm8LZiFgc5iM/z0H0vBSh+zPLaizsJEmS57OihURIJQ5zf8sF2KwU0iNHyz4Exp');
+        audio.volume = 0.3;
+        audio.play();
+    } catch (e) {}
+}
+
+async function stopFaceSession() {
+    if (!currentSession) return;
+
+    try {
+        // إغلاق الجلسة
+        const response = await fetch(`/api/face/session/close/${currentSession.id}`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        // إيقاف الكاميرا
+        if (videoStream) {
+            videoStream.getTracks().forEach(track => track.stop());
+            videoStream = null;
+        }
+
+        // إيقاف التعرف
+        if (recognitionInterval) {
+            clearInterval(recognitionInterval);
+            recognitionInterval = null;
+        }
+
+        // تحديث الواجهة
+        document.getElementById('activeState').classList.add('d-none');
+        document.getElementById('waitingState').classList.remove('d-none');
+        document.getElementById('stopSessionBtn').classList.add('d-none');
+        document.getElementById('startSessionBtn').classList.remove('d-none');
+        document.getElementById('sessionStatus').classList.add('d-none');
+
+        // إعادة تعيين الإحصائيات
+        sessionStats = { success: 0, failed: 0, unknown: 0, duplicate: 0 };
+        updateSessionStats();
+
+        currentSession = null;
+        isProcessing = false;
+        cooldownActive = false;
+
+        showToast('تم إيقاف الجلسة', 'info');
+    } catch (error) {
+        console.error('Error stopping session:', error);
+        showToast('فشل إيقاف الجلسة', 'error');
+    }
+}
+
+function showToast(message, type = 'success') {
+    if (!window.Swal) {
+        alert(message);
+        return;
+    }
+    const colors = { success: '#28a745', error: '#dc3545', warning: '#ffc107', info: '#17a2b8' };
+    Swal.fire({
+        title: { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' }[type],
+        text: message,
+        icon: type,
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true
+    });
+}
+
+// تنظيف عند مغادرة الصفحة
+window.addEventListener('beforeunload', function() {
+    if (currentSession) {
+        stopFaceSession();
+    }
+});
+</script>
+
+<style>
+.animate-fade-in {
+    animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+#cameraVideo {
+    border-radius: 12px;
+}
+
+.bg-gradient {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+</style>
+{% endblock %}
